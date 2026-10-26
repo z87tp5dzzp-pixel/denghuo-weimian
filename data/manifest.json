@@ -1,5 +1,5 @@
 {
-"version": 1793038857,
+"version": 1793039746,
 "sprites": {
 "ash": {
 "casual": "img/sprites/ash_casual.webp",
@@ -839,6 +839,7 @@
 "bg_north_city_dawn",
 "bg_north_city_dawn_rain",
 "bg_north_city_gate",
+"bg_north_city_past",
 "bg_north_city_ruins",
 "bg_north_city_streets",
 "bg_north_city_wall_camp",
@@ -1480,6 +1481,7 @@
 "bg_north_city_dawn",
 "bg_north_city_dawn_rain",
 "bg_north_city_gate",
+"bg_north_city_past",
 "bg_north_city_ruins",
 "bg_north_city_streets",
 "bg_north_city_wall_camp",
