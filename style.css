@@ -1,5 +1,5 @@
 /* 《燈火未眠》 — landscape 1280×720 stage, layout modelled on game 1 (Ren'Py default GUI), dark/gold theme */
-:root { --gold: #c9a24a; --gold-hi: #e9cf8a; --ink: #0b0d1e; --accent: #c9a24a; --gray: 1; --idle: #8f887a; --hover: #f3dfa6; }
+:root { --gold: #c9a24a; --gold-hi: #e9cf8a; --ink: #0b0d1e; --accent: #c9a24a; --idle: #8f887a; --hover: #f3dfa6; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: #000; color: #ece6d6; overflow: hidden; overscroll-behavior: none;
   font-family: "Noto Serif TC", "Noto Serif CJK TC", "Songti TC", "PingFang TC", serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-text-size-adjust: 100%; }
@@ -12,8 +12,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 #frame.portrait #rotate { display: block; }
 
 /* ---------- stage ---------- */
-#stage { position: absolute; inset: 0; filter: grayscale(var(--gray)); transition: filter 2.5s ease; }
-#stage.color { filter: grayscale(0); }
+#stage { position: absolute; inset: 0; --sf: none; }
+#bg, #bg2, #sprites, #cg { filter: var(--sf); transition: filter 1.2s ease, opacity 1.2s ease; }
+.notrans #bg, .notrans #bg2, .notrans #sprites, .notrans #cg { transition: none !important; }
 .bg { position: absolute; inset: 0; background-size: cover; background-position: center; transition: opacity 1.2s ease; }
 #bg2 { opacity: 0; }
 .notrans .bg, .notrans .spr { transition: none !important; }

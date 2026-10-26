@@ -192,10 +192,20 @@ function renderCg(S) {
   if (url) { el.innerHTML = ''; const img = new Image(); img.onerror = () => { el.innerHTML = cgPlaceholder(cg.id, cg.note, S); }; img.src = url; el.appendChild(img); }
   else el.innerHTML = cgPlaceholder(cg.id, cg.note, S);
 }
+// Scene colour: full colour by default. 亞思's colour blindness lives in the TEXT only.
+// Only fx values listed in SPECIAL_FX alter the picture; everything else (gray, color, none, rain, snow, unknown) is normal full colour.
+const SPECIAL_FX = {
+  mono: 'grayscale(1)', flashback: 'grayscale(1) contrast(1.05) brightness(.92)', purge: 'grayscale(1) contrast(1.15) brightness(.85)',
+  lost: 'grayscale(1) contrast(1.35) brightness(.8)',
+  fade_color_edge: 'grayscale(.35)', fade_color_half: 'grayscale(.65)', fade_color_low: 'grayscale(.9)',
+  red: 'grayscale(1) sepia(.7) saturate(4) hue-rotate(-42deg) brightness(.8)',
+  purple: 'grayscale(1) sepia(.5) saturate(2.6) hue-rotate(215deg) brightness(.85)',
+};
+const MOOD_FX = { dark: 'brightness(.6) saturate(.9)' };
+function sceneFilter(fx) { return SPECIAL_FX[fx] || MOOD_FX[fx] || 'none'; }
 function applyTint(S) {
   const n = colorsCount(S);
-  const gray = S.pres.bgfx === 'color' ? 0 : Math.max(.06, 1 - n * .085);
-  document.documentElement.style.setProperty('--gray', gray.toFixed(3));
+  if (!T.pop) $('#stage').style.setProperty('--sf', sceneFilter(S.pres.bgfx));
   const sat = 18 + Math.min(11, n) * 5; const light = 50 + Math.min(11, n);
   document.documentElement.style.setProperty('--accent', `hsl(42, ${sat}%, ${light}%)`);
   const key = (S.v.colors_seen || []).join(',');
@@ -222,7 +232,7 @@ function renderAudio(S) {
 function renderAll(S) {
   const P = S.pres;
   if (P.bg !== R.bg) { R.bg = P.bg; setBg(P.bg, P.bgfx); }
-  $('#stage').classList.toggle('color', P.bgfx === 'color');
+  $('#stage').dataset.fx = P.bgfx || '';
   applyTint(S); renderSprites(S); renderCg(S); renderGauge(S); renderCounter(S); renderAudio(S);
   $('#datechip').textContent = hiddenSafe(P.date || '', S);
 }
@@ -334,8 +344,14 @@ const ui = {
   async title(t, sub) { await card(hiddenSafe(t, engine.S), hiddenSafe(sub || '', engine.S), 'title', 2200); },
   async color(id, S) {
     applyTint(S); const fx = $('#fxlayer'); const c = COLOR_HEX[id] || COLOR_HEX[(id || '').replace(/^hint_/, '')] || '#e2b84a';
-    fx.style.transition = 'opacity 1s'; fx.style.background = `radial-gradient(circle at 50% 45%, ${hex(c.length === 7 ? c : '#e2b84a', .45)}, transparent 70%)`; fx.style.opacity = 1;
-    await sleep(T.skip || !settings.trans ? 50 : 1300); fx.style.opacity = 0;
+    if (T.skip || !settings.trans) return;
+    const st = $('#stage'); T.pop = true;
+    st.style.setProperty('--sf', 'grayscale(1) brightness(.9)'); await sleep(700);           // the world drains to grey…
+    fx.style.transition = 'opacity 1.2s'; fx.style.mixBlendMode = 'color';
+    fx.style.background = `radial-gradient(circle at 50% 45%, ${hex(c.length === 7 ? c : '#e2b84a', .95)}, ${hex(c.length === 7 ? c : '#e2b84a', .35)} 45%, transparent 75%)`; fx.style.opacity = 1;
+    await sleep(1600);                                                                         // …one hue blooms out of it…
+    T.pop = false; st.style.setProperty('--sf', sceneFilter(S.pres.bgfx)); fx.style.opacity = 0; // …then full colour returns
+    await sleep(1200); fx.style.mixBlendMode = '';
   },
   gauge(S) { renderGauge(S); },
   expr() {},
@@ -389,7 +405,7 @@ function makeMeta(S) {
   const P = S.pres; const sprites = [];
   if (!P.cg) for (const [id, sp] of Object.entries(P.sprites || {})) { const u = spriteUrl(id, sp.outfit, sp.expr); if (u) sprites.push([u, POS[sp.pos] || 50]); }
   const name = [hiddenSafe(P.date || '', S), hiddenSafe(P.title || '', S)].filter(Boolean).join('　') || '序章';
-  return { ts: Date.now(), name, thumb: { bg: P.bg || '', cg: P.cg ? 1 : 0, sp: sprites.slice(0, 3), gray: P.bgfx === 'color' ? 0 : Math.max(.06, 1 - colorsCount(S) * .085) } };
+  return { ts: Date.now(), name, thumb: { bg: P.bg || '', cg: P.cg ? 1 : 0, sp: sprites.slice(0, 3), fx: P.bgfx || '' } };
 }
 function record(snap) { return { v: 2, snap: prune(JSON.parse(JSON.stringify(snap))), meta: makeMeta(snap) }; }
 function curSnap() { return engine && (engine.lastSnap || engine.snapshot()); }
@@ -414,7 +430,7 @@ function thumbHTML(r) {
   if (!r) return '<div class="thumb empty"></div>';
   const t = r.meta.thumb || {}; const url = MAN.bg[t.bg];
   const bg = url ? `url(&quot;${url}&quot;), ${bgStyle(t.bg)}` : bgStyle(t.bg);
-  let h = `<div class="thumb" style="filter:grayscale(${t.gray == null ? 1 : t.gray})"><div class="tb" style="background-image:${bg.replace(/"/g, '&quot;')}"></div>`;
+  let h = `<div class="thumb" style="filter:${sceneFilter(t.fx)}"><div class="tb" style="background-image:${bg.replace(/"/g, '&quot;')}"></div>`;
   for (const [u, x] of (t.sp || [])) h += `<img src="${esc(u)}" style="left:${x}%" alt="">`;
   if (t.cg) h += '<div class="tcg">✦</div>';
   return h + '</div>';

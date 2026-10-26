@@ -1,5 +1,5 @@
 {
-"version": 1793035489,
+"version": 1793035968,
 "sprites": {
 "ash": {
 "casual": "img/sprites/ash_casual.webp",
@@ -261,6 +261,7 @@
 "bgm_lead_elio_seth": "audio/bgm/bgm_lead_elio_shallows.mp3",
 "bgm_lead_elio_soft": "audio/bgm/bgm_lead_elio_shallows.mp3",
 "bgm_lead_julian_light": "audio/bgm/bgm_prologue_fire_at_rest.mp3",
+"bgm_lead_kael_moon": "audio/bgm/bgm_lead_kael_silver.mp3",
 "bgm_lead_kael_silver_love": "audio/bgm/bgm_confession_danse_morialta.mp3",
 "bgm_lead_kael_silver_soft": "audio/bgm/bgm_lead_kael_silver.mp3",
 "bgm_lead_leo_anchor": "audio/bgm/bgm_lead_leo_orange.mp3",
@@ -885,8 +886,10 @@
 "bg_ruin_lighthouse_day",
 "bg_ruin_lighthouse_night",
 "bg_ruin_lighthouse_top_night",
+"bg_ruined_block_day",
 "bg_ruined_north_city",
 "bg_ruins_dark",
+"bg_ruins_dark_night",
 "bg_ruins_dawn",
 "bg_ruins_east",
 "bg_ruins_exit_day",
@@ -926,6 +929,7 @@
 "bg_seawall_house_roof_night",
 "bg_seawall_house_study_day",
 "bg_seawall_house_yard_day",
+"bg_sewer_exit_rain",
 "bg_sewer_old_port",
 "bg_shallows_low_tide",
 "bg_shallows_night_bioluminescence",
@@ -971,7 +975,6 @@
 "bg_wall_top_night",
 "bg_wall_top_rain",
 "bg_war_room",
-"bg_warehouse_fire",
 "bg_warehouse_ruins_burning",
 "bg_wasteland_campfire_night",
 "bg_wasteland_dusk",
@@ -1504,8 +1507,10 @@
 "bg_ruin_lighthouse_day",
 "bg_ruin_lighthouse_night",
 "bg_ruin_lighthouse_top_night",
+"bg_ruined_block_day",
 "bg_ruined_north_city",
 "bg_ruins_dark",
+"bg_ruins_dark_night",
 "bg_ruins_dawn",
 "bg_ruins_east",
 "bg_ruins_exit_day",
@@ -1545,6 +1550,7 @@
 "bg_seawall_house_roof_night",
 "bg_seawall_house_study_day",
 "bg_seawall_house_yard_day",
+"bg_sewer_exit_rain",
 "bg_sewer_old_port",
 "bg_shallows_low_tide",
 "bg_shallows_night_bioluminescence",
@@ -1590,7 +1596,6 @@
 "bg_wall_top_night",
 "bg_wall_top_rain",
 "bg_war_room",
-"bg_warehouse_fire",
 "bg_warehouse_ruins_burning",
 "bg_wasteland_campfire_night",
 "bg_wasteland_dusk",
@@ -1606,6 +1611,7 @@
 "bg_wheat_field_summer"
 ],
 "bgm": [
+"bgm_battle_desperate",
 "bgm_combat_rift_final",
 "bgm_comedy_jealous",
 "bgm_daily_comedy",
@@ -1614,7 +1620,8 @@
 "bgm_daily_quiet",
 "bgm_daily_tense",
 "bgm_dark_night_count",
-"bgm_love_ash"
+"bgm_love_ash",
+"bgm_patrol_steady"
 ],
 "amb": [
 "amb_bar_low",
