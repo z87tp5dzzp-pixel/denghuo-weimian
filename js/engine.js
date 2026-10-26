@@ -340,8 +340,8 @@ class Engine {
     const s = e.s; const lead = s.lead;
     const loc = s.slotd && s.slotd.loc ? (LOC_NAME[s.slotd.loc] || '') : '';
     if (lead) {
-      if (this.met(lead)) return `${NAMES[lead]}${loc ? '（' + loc + '）' : ''}`;
-      return `（${loc || '某處'}）……某個人`;
+      if (this.met(lead)) return loc ? `去${loc}找${NAMES[lead]}` : `去找${NAMES[lead]}`;
+      return `去${loc || '別處'}看看（……好像有人在）`;
     }
     return `（${s.title || loc || '……'}）`;
   }
@@ -376,7 +376,7 @@ class Engine {
       const nc = list.find(e => e.id === 'NIGHT_OF_COLORS'); const et = list.find(e => e.id === 'EVE_TOGETHER');
       const code = []; const labels = {};
       const choices = [];
-      const mkChoice = (label, opts) => { labels[label] = code.length; const ins = ['choice', null, opts, 'END', 0, '最後的夜。妳想見誰？']; code.push(ins); choices.push(ins); };
+      const mkChoice = (label, opts) => { labels[label] = code.length; const ins = ['choice', null, opts, 'END', 0, '最後的夜。我想去見誰？']; code.push(ins); choices.push(ins); };
       const opt = (text, body, next, cond) => { const pc = code.length; code.push(...body); code.push(['goto', next]); return { text, pc, cond: cond || null }; };
       // build bodies after choice instructions: choices first as placeholders
       const o0 = [], o1 = [], o2 = [];
@@ -412,7 +412,7 @@ class Engine {
     opts.push({ text: special ? '（一個人。）' : (times === NIGHT_T ? '（早點休息。）' : '（一個人待著。）'), pc: apc });
     const endPc = code.length; code.push(['end']);
     for (const ins of code) if (ins && ins[0] === 'goto') ins[1] = endPc;
-    code[0] = ['choice', null, opts, endPc, 0, special ? '妳想見誰？' : (times === NIGHT_T ? '夜裡，要去哪裡？' : '空下來的時間，要去哪裡？')];
+    code[0] = ['choice', null, opts, endPc, 0, special ? '今晚，我想去見誰？' : (times === NIGHT_T ? '夜裡，要去哪裡？' : '空下來的時間，要去哪裡？')];
     this.push(this.synth(code));
   }
   guideFree(tag) {
