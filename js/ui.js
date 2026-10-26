@@ -1,17 +1,55 @@
-/* 《燈火未眠》 UI layer: rendering, input, audio, saves, gallery. */
+/* 《燈火未眠》 UI layer — landscape 1280×720 stage; controls, menus and save system modelled on game 1 (Ren'Py GUI). */
 (function () {
 'use strict';
-const { Engine, NAMES, LEADS, HIDDEN, COLOR_HEX, COLOR_NAME } = VEngine;
+const { Engine, NAMES, LEADS, HIDDEN, HEART, COLOR_HEX, COLOR_NAME } = VEngine;
 const $ = (s) => document.querySelector(s);
 const LS = 'dhwm_';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const HIDDEN_ZH = { silas: '塞拉斯', noa: '諾亞', vex: '維克斯', arno: '亞諾' };
+const HIDDEN_UNLOCK = { silas: 'silas_unlocked', noa: 'noa_unlocked', vex: 'vex_unlocked', arno: 'arno_truth' };
 let DATA = null, MAN = null, engine = null, persist = null, endingTitles = {}, allEndings = [];
-const settings = Object.assign({ bgm: 0.35, amb: 0.3, speed: 32, auto: 1, skipUnread: false }, jget('settings') || {});
+const settings = Object.assign({ bgm: 0.35, amb: 0.3, speed: 32, auto: 1, skipUnread: false, skipAfter: false, trans: true, mute: false }, jget('settings') || {});
 function jget(k) { try { return JSON.parse(localStorage.getItem(LS + k)); } catch (e) { return null; } }
-function jset(k, v) { try { localStorage.setItem(LS + k, JSON.stringify(v)); return true; } catch (e) { toast('儲存空間不足'); return false; } }
-function toast(t, ms) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), ms || 1600); }
+function jset(k, v) { try { localStorage.setItem(LS + k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+function saveSettings() { jset('settings', settings); Snd.refresh(); }
+function notify(t, ms) { const el = $('#notify'); el.textContent = t; el.classList.add('on'); clearTimeout(notify._t); notify._t = setTimeout(() => el.classList.remove('on'), ms || 3250); }
+
+// ---------------- layout: fixed 1280×720 stage, scaled + letterboxed (Ren'Py virtual screen) ----------------
+const V = { small: false, touch: false, scale: 1 };
+function fit() {
+  const g = $('#game'), cs = getComputedStyle($('#safe'));
+  const l = parseFloat(cs.paddingLeft) || 0, r = parseFloat(cs.paddingRight) || 0, t = parseFloat(cs.paddingTop) || 0, b = parseFloat(cs.paddingBottom) || 0;
+  const W = Math.max(1, innerWidth - l - r), H = Math.max(1, innerHeight - t - b);
+  const s = Math.min(W / 1280, H / 720); V.scale = s;
+  g.style.transform = `translate(${(l + (W - 1280 * s) / 2).toFixed(2)}px, ${(t + (H - 720 * s) / 2).toFixed(2)}px) scale(${s.toFixed(5)})`;
+  $('#frame').classList.toggle('portrait', innerHeight > innerWidth * 1.05);
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const small = coarse && Math.min(screen.width, screen.height) < 600;
+  if (small !== V.small || coarse !== V.touch) { V.small = small; V.touch = coarse; g.classList.toggle('small', small); g.classList.toggle('touch', coarse); buildQuick(); if (!$('#gmenu').classList.contains('hidden')) GM.render(); buildMainNav(); }
+}
+const perPage = () => V.small ? 4 : 6;
+
+// ---------------- save storage (IndexedDB, localStorage fallback) ----------------
+const Store = {
+  db: null, cache: {},
+  async init() {
+    try {
+      if (!window.indexedDB) throw 0;
+      this.db = await new Promise((res, rej) => { const q = indexedDB.open('dhwm', 1); q.onupgradeneeded = () => q.result.createObjectStore('saves'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+      await new Promise((res) => { const tx = this.db.transaction('saves'); const st = tx.objectStore('saves'); const c = st.openCursor();
+        c.onsuccess = () => { const cur = c.result; if (cur) { this.cache[cur.key] = cur.value; cur.continue(); } else res(); }; c.onerror = () => res(); });
+    } catch (e) { this.db = null; for (const k of Object.keys(localStorage)) if (k.startsWith(LS + 'sv_')) { try { this.cache[k.slice(LS.length + 3)] = JSON.parse(localStorage.getItem(k)); } catch (e2) {} } }
+  },
+  get(k) { return this.cache[k] || null; },
+  set(k, v) {
+    this.cache[k] = v;
+    if (this.db) { try { this.db.transaction('saves', 'readwrite').objectStore('saves').put(v, k); return true; } catch (e) {} }
+    try { localStorage.setItem(LS + 'sv_' + k, JSON.stringify(v)); return true; } catch (e) { notify('儲存空間不足，存檔失敗。'); return false; }
+  },
+  del(k) { delete this.cache[k]; if (this.db) { try { this.db.transaction('saves', 'readwrite').objectStore('saves').delete(k); } catch (e) {} } localStorage.removeItem(LS + 'sv_' + k); },
+  newest(prefix) { let best = null; for (const k in this.cache) if (!prefix || k.startsWith(prefix)) { const m = this.cache[k] && this.cache[k].meta; if (m && (!best || m.ts > best.ts)) best = { k, ts: m.ts }; } return best && best.k; },
+};
 
 // ---------------- audio (Web Audio gain → quiet + fades; iOS ignores element.volume) ----------------
 const Snd = {
@@ -38,7 +76,7 @@ const Snd = {
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
     if (this.pending) { const p = this.pending; this.pending = null; for (const k in p) this.play(k, p[k].url, p[k].vol); }
   },
-  level(kind, vol) { return Math.max(0, Math.min(1, (kind === 'bgm' ? settings.bgm : settings.amb) * vol)); },
+  level(kind, vol) { if (settings.mute) return 0; return Math.max(0, Math.min(1, (kind === 'bgm' ? settings.bgm : settings.amb) * vol)); },
   ramp(c, idx, to, sec) {
     const g = c.gains[idx], el = c.els[idx];
     if (g && this.ctx) { const t = this.ctx.currentTime; g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(to, t + sec); }
@@ -168,6 +206,7 @@ function renderGauge(S) {
   const gl = $('#g-load'), gc = $('#g-loc');
   const load = +v.load || 0; gl.classList.toggle('on', !!P.combat || load >= 60); gl.querySelector('i').style.setProperty('--v', Math.min(100, load) + '%');
   gc.classList.toggle('on', !!P.combat); gc.querySelector('i').style.setProperty('--v', Math.min(100, +v.loc || 0) + '%');
+  $('#status').classList.toggle('empty', !(S.v.colors_seen || []).length && !gl.classList.contains('on') && !gc.classList.contains('on'));
 }
 function renderCounter(S) {
   const c = S.pres.counter, el = $('#counter');
@@ -189,30 +228,29 @@ function renderAll(S) {
 }
 
 // ---------------- text / input ----------------
-const T = { busy: false, typing: false, full: '', resolve: null, auto: false, skip: false, timer: null, card: null, lines: 0, inGame: false };
+const T = { typing: false, full: '', resolve: null, auto: false, skip: false, timer: null, card: null, lines: 0, inGame: false, line: null, choosing: false };
 function setMode(m, on) {
   T[m] = on; if (on) T[m === 'auto' ? 'skip' : 'auto'] = false;
-  document.querySelectorAll('#controls button').forEach(b => b.classList.toggle('on', !!T[b.dataset.act]));
-  if (on && T.typing === false && T.resolve && $('#textbox').classList.contains('done')) scheduleAdvance();
+  syncQuick();
+  if (on && !T.typing && T.resolve && $('#window').classList.contains('done')) scheduleAdvance();
 }
 function scheduleAdvance() {
   clearTimeout(T.timer);
-  if (T.skip) { T.timer = setTimeout(advance, 35); return; }
-  if (T.auto) T.timer = setTimeout(advance, (900 + T.full.length * 55) * settings.auto);
+  const go = () => { if (overlayOpen() || T.card) { T.timer = setTimeout(go, 250); return; } advance(); };
+  if (T.skip) { T.timer = setTimeout(go, 35); return; }
+  if (T.auto) T.timer = setTimeout(go, (900 + T.full.length * 55) * settings.auto);
 }
 function advance() { clearTimeout(T.timer); const r = T.resolve; if (!r) return; T.resolve = null; r(); }
-function finishTyping() { clearInterval(T.iv); T.typing = false; $('#text').textContent = T.full; $('#textbox').classList.add('done'); scheduleAdvance(); }
+function finishTyping() { clearInterval(T.iv); T.typing = false; $('#text').textContent = T.full; $('#window').classList.add('done'); scheduleAdvance(); }
 function showLine(line) {
-  const tb = $('#textbox'); tb.classList.remove('hidden'); $('#controls').classList.remove('hidden');
+  const tb = $('#window'); tb.classList.remove('hidden');
   tb.className = (line.kind || 'say') + (line.read && !T.skip ? ' read' : '');
   let name = line.name || '';
   if (line.kind === 'comm') name = '通訊' + (name ? '・' + name : '');
-  if (line.kind === 'mono' && !name) name = '';
-  $('#namebox').textContent = name;
+  $('#who').textContent = name; $('#namebox').classList.toggle('empty', !name);
   let text = line.text || '';
   if (line.kind === 'say' || line.kind === 'whisper' || line.kind === 'comm') { if (!/^[「『（(]/.test(text)) text = '「' + text + '」'; }
   T.full = text;
-  // dim non-speakers
   for (const [id, n] of Object.entries(R.sprites)) n.classList.toggle('dim', !!line.who && line.who !== id && !!R.sprites[line.who]);
   const el = $('#text'); el.textContent = '';
   if (T.skip || settings.speed <= 0) { finishTyping(); return; }
@@ -220,36 +258,68 @@ function showLine(line) {
   clearInterval(T.iv);
   T.iv = setInterval(() => { i += 1; el.textContent = chars.slice(0, i).join(''); if (i >= chars.length) finishTyping(); }, settings.speed);
 }
+function overlayOpen() { return !$('#gmenu').classList.contains('hidden') || !$('#confirm').classList.contains('hidden') || !$('#viewer').classList.contains('hidden') || !$('#pick').classList.contains('hidden'); }
 function onTap(e) {
-  if (!T.inGame) return;
-  if (e.target.closest('#controls,#choices,#panel,#title-screen,button')) return;
   Snd.unlock();
+  if (!T.inGame || overlayOpen()) return;
+  if (e.target.closest('#quick,#choices,#gmenu,#mainmenu,#confirm,#pick,#viewer,button')) return;
   if (T.card) { const c = T.card; T.card = null; c(); return; }
   if (T.skip) { setMode('skip', false); return; }
   if (T.typing) { finishTyping(); return; }
-  if (T.auto) setMode('auto', false);
   advance();
+}
+
+// ---------------- rollback (回退 / 上個選項), Ren'Py-style ----------------
+let RB = [];
+function rbPush(ch) { if (!engine || !engine.lastSnap) return; RB.push({ snap: engine.lastSnap, ch }); if (RB.length > 150) RB.splice(0, RB.length - 150); syncQuick(); }
+function rollback() {
+  if (!T.inGame || RB.length < 2) return;
+  RB.pop(); const t = RB.pop(); startGame(t.snap, { keepRB: true });
+}
+function prevChoice() {
+  if (!T.inGame) return;
+  let j = -1; for (let i = RB.length - 2; i >= 0; i--) if (RB[i].ch) { j = i; break; }
+  if (j < 0) { notify('沒有可以返回的選項了。'); return; }
+  const t = RB[j]; RB.length = j; startGame(t.snap, { keepRB: true });
 }
 
 // ---------------- UI object given to the engine ----------------
 const ui = {
   say(line) {
     if (T.skip && !line.read && line.key && !settings.skipUnread) setMode('skip', false);
+    rbPush(false);
     T.lines++;
-    if (T.lines % 12 === 0) autosave();
+    if (T.lines % 80 === 0) autosave();
     if (T.lines % 40 === 0) savePersist();
+    T.line = line;
     return new Promise(res => { T.resolve = res; showLine(line); });
   },
   choice(opts, timed, prompt) {
+    const keepSkip = T.skip && settings.skipAfter;
     setMode('skip', false); clearTimeout(T.timer);
+    rbPush(true);
     autosave();
+    const top = engine.lastSnap.stack[engine.lastSnap.stack.length - 1] || { s: '', pc: 0 };
+    const base = top.s + ':' + top.pc;
     return new Promise(res => {
-      $('#textbox').classList.add('done');
+      if ($('#window').classList.contains('hidden')) { const L = (engine.S.log || []).filter(l => l.k !== 'choice').slice(-1)[0];
+        if (L) { $('#window').className = (L.k || 'say') + ' done'; $('#who').textContent = L.n || ''; $('#namebox').classList.toggle('empty', !L.n); $('#text').textContent = hiddenSafe(L.t, engine.S); } }
+      $('#window').classList.add('done'); T.choosing = true;
       const box = $('#choices'); const list = $('#clist'); list.innerHTML = '';
       $('#cprompt').textContent = prompt ? hiddenSafe(prompt, engine.S) : '';
       let done = false; let tid = null;
-      const pick = (i) => { if (done) return; done = true; clearTimeout(tid); box.classList.add('hidden'); res(i); };
-      opts.forEach((o, i) => { const b = document.createElement('button'); b.textContent = hiddenSafe(o.text, engine.S); b.onclick = (ev) => { ev.stopPropagation(); Snd.unlock(); pick(i); }; list.appendChild(b); });
+      const pick = (i) => {
+        if (done) return; done = true; clearTimeout(tid); T.choosing = false; box.classList.add('hidden');
+        persist.chosen[chosenKey(base, top.s, opts[i])] = 1; savePersist();
+        if (keepSkip) setMode('skip', true);
+        res(i);
+      };
+      opts.forEach((o, i) => {
+        const b = document.createElement('button'); const was = !!persist.chosen[chosenKey(base, top.s, o)];
+        b.innerHTML = esc(hiddenSafe(o.text, engine.S)) + (was ? ' <span class="chosen">〔已選過〕</span>' : '');
+        if (was) b.classList.add('was');
+        b.onclick = (ev) => { ev.stopPropagation(); Snd.unlock(); pick(i); }; list.appendChild(b);
+      });
       const tm = $('#ctimer'); const sec = parseFloat(timed) || 0;
       if (sec > 0) { tm.classList.add('on'); const bar = tm.firstChild; bar.style.transition = 'none'; bar.style.transform = 'scaleX(1)';
         requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transition = `transform ${sec}s linear`; bar.style.transform = 'scaleX(0)'; }));
@@ -265,7 +335,7 @@ const ui = {
   async color(id, S) {
     applyTint(S); const fx = $('#fxlayer'); const c = COLOR_HEX[id] || COLOR_HEX[(id || '').replace(/^hint_/, '')] || '#e2b84a';
     fx.style.transition = 'opacity 1s'; fx.style.background = `radial-gradient(circle at 50% 45%, ${hex(c.length === 7 ? c : '#e2b84a', .45)}, transparent 70%)`; fx.style.opacity = 1;
-    await sleep(T.skip ? 50 : 1300); fx.style.opacity = 0;
+    await sleep(T.skip || !settings.trans ? 50 : 1300); fx.style.opacity = 0;
   },
   gauge(S) { renderGauge(S); },
   expr() {},
@@ -275,23 +345,25 @@ const ui = {
     renderAll(S);
   },
   async fx(c, a, S) {
-    const fx = $('#fxlayer'); const quick = T.skip;
+    const fx = $('#fxlayer'); const quick = T.skip || !settings.trans;
     switch (c) {
-      case 'wait': if (!quick) await sleep(Math.min(4, parseFloat(a) || 1) * 1000); break;
-      case 'shake': $('#stage').classList.remove('shake'); void $('#stage').offsetWidth; $('#stage').classList.add('shake'); break;
+      case 'wait': if (!T.skip) await sleep(Math.min(4, parseFloat(a) || 1) * 1000); break;
+      case 'shake': if (!quick) { $('#stage').classList.remove('shake'); void $('#stage').offsetWidth; $('#stage').classList.add('shake'); } break;
       case 'flash': { if (quick) break; fx.style.transition = 'none'; fx.style.background = /red/.test(a) ? '#b03030' : '#fff'; fx.style.opacity = .85; await sleep(60); fx.style.transition = 'opacity .7s'; fx.style.opacity = 0; await sleep(300); break; }
       case 'fade': { if (quick) break; fx.style.transition = 'opacity .8s'; fx.style.background = /white/.test(a) ? '#f2f0ea' : '#000'; fx.style.opacity = 1; await sleep(900); fx.style.opacity = 0; break; }
-      case 'lamp': $('#app').style.setProperty('--lamp', /off/.test(a) ? '0' : '1'); document.getElementById('stage').style.boxShadow = /off/.test(a) ? '' : 'inset 0 -120px 140px -60px rgba(232,170,90,.35)'; break;
+      case 'lamp': $('#stage').style.boxShadow = /off/.test(a) ? '' : 'inset 0 -120px 140px -60px rgba(232,170,90,.35)'; break;
       case 'fx': { const m = /color=(\w+)/.exec(a); const col = m ? (COLOR_HEX[m[1]] || '#e2b84a') : '#e2b84a'; if (quick) break; fx.style.transition = 'opacity 1s'; fx.style.background = `radial-gradient(circle at 50% 35%, ${hex(col, .4)}, transparent 70%)`; fx.style.opacity = 1; await sleep(1400); fx.style.opacity = 0; break; }
       default: break; // sfx, voice, ui, flashback, label: silent/no-op by design
     }
   },
 };
+function chosenKey(base, sid, o) { return /^__s/.test(sid) ? 'S:' + o.text : base + ':' + o.text; }
 function card(t1, t2, cls, ms) {
   if (!t1 && !t2) return Promise.resolve();
   if (T.skip) return Promise.resolve();
   return new Promise(res => {
     const el = $('#card'); el.className = cls; el.querySelector('.c1').textContent = t1; el.querySelector('.c2').textContent = t2 || '';
+    if (!settings.trans) el.style.animation = 'none'; else el.style.animation = '';
     let done = false; const fin = () => { if (done) return; done = true; T.card = null; el.classList.add('hidden'); res(); };
     T.card = fin; setTimeout(fin, ms);
   });
@@ -300,114 +372,301 @@ function card(t1, t2, cls, ms) {
 // ---------------- persistence ----------------
 function loadPersist() {
   const p = jget('persist') || {};
-  persist = { endings: p.endings || {}, cgs: p.cgs || {}, unlocks: p.unlocks || {}, gallery: p.gallery || {}, read: new Set(p.read || []) };
+  persist = { endings: p.endings || {}, cgs: p.cgs || {}, unlocks: p.unlocks || {}, gallery: p.gallery || {}, read: new Set(p.read || []), chosen: p.chosen || {} };
 }
-function savePersist() { jset('persist', { endings: persist.endings, cgs: persist.cgs, unlocks: persist.unlocks, gallery: persist.gallery, read: [...persist.read] }); }
-function meta(S) { const last = (S.log || []).slice(-1)[0]; return { date: hiddenSafe(S.pres.date || '', S), title: hiddenSafe(S.pres.title || '', S), text: hiddenSafe(last ? last.t : '', S).slice(0, 40), ts: Date.now() }; }
-function autosave() { if (!engine || !engine.lastSnap || !T.inGame) return; jset('auto', { snap: engine.lastSnap, meta: meta(engine.lastSnap) }); }
-function slotKey(i) { return 'slot' + i; }
+function savePersist() { jset('persist', { endings: persist.endings, cgs: persist.cgs, unlocks: persist.unlocks, gallery: persist.gallery, read: [...persist.read], chosen: persist.chosen }); }
+
+// ---------------- save system (pages A / Q / 1–9, like Ren'Py file_slots) ----------------
+function prune(s) {
+  const keep = new Set(); const syn = s.synth || {};
+  const scan = (o) => { JSON.stringify(o || null).replace(/__s\d+/g, (m) => { if (!keep.has(m) && syn[m]) { keep.add(m); scan(syn[m]); } return m; }); };
+  scan(s.stack); scan(s.queue); scan(s.v);
+  const out = {}; for (const k of keep) out[k] = syn[k]; s.synth = out; return s;
+}
+const WD = '日一二三四五六';
+function fmtTime(ts) { const d = new Date(ts); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日（${WD[d.getDay()]}）${p(d.getHours())}:${p(d.getMinutes())}`; }
+function makeMeta(S) {
+  const P = S.pres; const sprites = [];
+  if (!P.cg) for (const [id, sp] of Object.entries(P.sprites || {})) { const u = spriteUrl(id, sp.outfit, sp.expr); if (u) sprites.push([u, POS[sp.pos] || 50]); }
+  const name = [hiddenSafe(P.date || '', S), hiddenSafe(P.title || '', S)].filter(Boolean).join('　') || '序章';
+  return { ts: Date.now(), name, thumb: { bg: P.bg || '', cg: P.cg ? 1 : 0, sp: sprites.slice(0, 3), gray: P.bgfx === 'color' ? 0 : Math.max(.06, 1 - colorsCount(S) * .085) } };
+}
+function record(snap) { return { v: 2, snap: prune(JSON.parse(JSON.stringify(snap))), meta: makeMeta(snap) }; }
+function curSnap() { return engine && (engine.lastSnap || engine.snapshot()); }
+function saveTo(key) { const s = curSnap(); if (!s) return false; return Store.set(key, record(s)); }
+function rotate(prefix, n) { for (let i = n - 1; i >= 1; i--) { const r = Store.get(prefix + i); if (r) Store.set(prefix + (i + 1), r); } }
+let lastAuto = null;
+function autosave() {
+  if (!engine || !T.inGame || !engine.lastSnap || engine.lastSnap === lastAuto) return;
+  lastAuto = engine.lastSnap; rotate('auto-', 6); saveTo('auto-1');
+}
+function quickSave() { if (!T.inGame) return; rotate('quick-', perPage()); if (saveTo('quick-1')) notify('已快速存檔。'); syncQuick(); }
+function quickLoad() { const r = Store.get('quick-1'); if (!r) return; confirmBox('讀取存檔會失去未保存的進度。\n確定要這樣做嗎？', () => loadRecord(r)); }
+function loadRecord(r) { savePersist(); closeGM(); startGame(r.snap); }
+function migrateOld() {
+  if (jget('migrated2')) return;
+  const a = jget('auto'); if (a && a.snap && !Store.get('auto-1')) Store.set('auto-1', { v: 2, snap: a.snap, meta: { ts: (a.meta && a.meta.ts) || Date.now(), name: (a.meta && (a.meta.date || a.meta.title)) || '舊自動存檔', thumb: { bg: a.snap.pres && a.snap.pres.bg || '', cg: 0, sp: [], gray: 1 } } });
+  for (let i = 1; i <= 12; i++) { const d = jget('slot' + i); if (!d || !d.snap) continue; const k = `${Math.ceil(i / 4)}-${(i - 1) % 4 + 1}`;
+    if (!Store.get(k)) Store.set(k, { v: 2, snap: d.snap, meta: { ts: (d.meta && d.meta.ts) || Date.now(), name: (d.meta && (d.meta.date || d.meta.title)) || '舊存檔', thumb: { bg: d.snap.pres && d.snap.pres.bg || '', cg: 0, sp: [], gray: 1 } } }); }
+  jset('migrated2', 1);
+}
+function thumbHTML(r) {
+  if (!r) return '<div class="thumb empty"></div>';
+  const t = r.meta.thumb || {}; const url = MAN.bg[t.bg];
+  const bg = url ? `url(&quot;${url}&quot;), ${bgStyle(t.bg)}` : bgStyle(t.bg);
+  let h = `<div class="thumb" style="filter:grayscale(${t.gray == null ? 1 : t.gray})"><div class="tb" style="background-image:${bg.replace(/"/g, '&quot;')}"></div>`;
+  for (const [u, x] of (t.sp || [])) h += `<img src="${esc(u)}" style="left:${x}%" alt="">`;
+  if (t.cg) h += '<div class="tcg">✦</div>';
+  return h + '</div>';
+}
+
+// ---------------- confirm ----------------
+function confirmBox(msg, yes, no) {
+  $('#cf-msg').textContent = msg; $('#confirm').classList.remove('hidden');
+  const close = () => $('#confirm').classList.add('hidden');
+  $('#cf-yes').onclick = (e) => { e.stopPropagation(); close(); yes && yes(); };
+  $('#cf-no').onclick = (e) => { e.stopPropagation(); close(); no && no(); };
+}
 
 // ---------------- game lifecycle ----------------
 let runId = 0;
-function startGame(snap) {
+function startGame(snap, opt) {
+  opt = opt || {};
   if (engine) engine.stopped = true;
-  clearTimeout(T.timer); clearInterval(T.iv); T.resolve = null; T.card = null; setMode('auto', false); setMode('skip', false);
-  $('#choices').classList.add('hidden'); $('#card').classList.add('hidden');
+  clearTimeout(T.timer); clearInterval(T.iv); T.resolve = null; T.card = null; T.choosing = false; setMode('auto', false); setMode('skip', false);
+  if (!opt.keepRB) RB = [];
+  $('#choices').classList.add('hidden'); $('#card').classList.add('hidden'); $('#pick').classList.add('hidden');
   engine = new Engine(DATA, ui, persist);
   if (snap) engine.load(snap); else engine.S = engine.newState();
-  engine.lastSnap = engine.snapshot();
-  resetRender(); $('#title-screen').classList.add('hidden'); closePanel();
-  $('#textbox').classList.add('hidden'); $('#controls').classList.remove('hidden');
-  T.inGame = true; renderAll(engine.S);
+  engine.lastSnap = engine.snapshot(); lastAuto = null;
+  resetRender(); $('#mainmenu').classList.add('hidden'); closeGM();
+  $('#window').classList.add('hidden'); $('#hud').classList.remove('hidden');
+  T.inGame = true; buildQuick(); renderAll(engine.S);
   const my = ++runId; const e = engine;
   e.run().then(async (res) => {
     if (my !== runId || e.stopped) return;
     T.inGame = false; savePersist();
     if (res === 'ending' || res === 'end') {
-      localStorage.removeItem(LS + 'auto');
-      $('#textbox').classList.add('hidden'); $('#controls').classList.add('hidden');
+      $('#window').classList.add('hidden'); $('#quick').classList.add('hidden');
       T.inGame = true; await new Promise(r => { const el = $('#card'); el.className = 'end'; el.querySelector('.c1').textContent = '完'; el.querySelector('.c2').textContent = hiddenSafe(endingTitles[e.S.endingId] || '', e.S); T.card = () => { el.classList.add('hidden'); r(); }; });
       T.inGame = false;
     }
     toTitle();
-  }).catch(err => { console.error(err); toast('發生錯誤：' + err.message, 4000); });
+  }).catch(err => { console.error(err); notify('發生錯誤：' + err.message, 5000); });
 }
 function toTitle() {
-  if (engine) engine.stopped = true; runId++; T.inGame = false; T.resolve = null;
+  if (engine) engine.stopped = true; runId++; T.inGame = false; T.resolve = null; T.card = null; RB = [];
+  clearTimeout(T.timer); clearInterval(T.iv); setMode('auto', false); setMode('skip', false);
   Snd.play('amb', null); Snd.play('bgm', MAN.bgm.bgm_title_dreams || MAN.bgm.bgm_theme_musicbox || Object.values(MAN.bgm)[0] || null, .8); R.bgm = '__title'; R.amb = null;
-  $('#textbox').classList.add('hidden'); $('#controls').classList.add('hidden'); $('#choices').classList.add('hidden');
-  $('#title-screen').classList.remove('hidden'); closePanel();
-  $('#btn-continue').disabled = !jget('auto');
+  $('#window').classList.add('hidden'); $('#quick').classList.add('hidden'); $('#choices').classList.add('hidden'); $('#hud').classList.add('hidden'); $('#card').classList.add('hidden');
+  $('#mainmenu').classList.remove('hidden'); closeGM(); $('#pick').classList.add('hidden');
+  buildMainNav();
 }
 
-// ---------------- panels ----------------
-function openPanel(title, html) { $('#ptitle').textContent = title; $('#pbody').innerHTML = html; $('#panel').classList.remove('hidden'); $('#pbody').scrollTop = 0; }
-function closePanel() { $('#panel').classList.add('hidden'); }
-function slotsPanel(mode) {
-  const rows = [];
-  if (mode === 'load') { const a = jget('auto'); rows.push(slotRow('auto', '自動', a)); }
-  for (let i = 1; i <= 12; i++) rows.push(slotRow(i, String(i).padStart(2, '0'), jget(slotKey(i))));
-  openPanel(mode === 'save' ? '存檔' : '讀檔', rows.join(''));
-  $('#pbody').querySelectorAll('.slot').forEach(el => el.onclick = () => {
-    const k = el.dataset.k; const key = k === 'auto' ? 'auto' : slotKey(k); const cur = jget(key);
-    if (mode === 'save') {
-      if (!engine || !T.inGame) return;
-      if (cur && !confirm('覆蓋這個存檔？')) return;
-      if (jset(key, { snap: engine.lastSnap, meta: meta(engine.lastSnap) })) { toast('已存檔'); slotsPanel('save'); }
-    } else if (cur) { savePersist(); startGame(cur.snap); toast('讀取完成'); }
+// ---------------- new game: watch or skip the prologue ----------------
+const isPrologue = (id) => { const sc = DATA.scenes[id]; return /^P-/.test(id) || !!(sc && /(^|\/)00_/.test(sc.file || '')); };
+async function prologueSkipped() {
+  // Run the prologue on a silent engine (default choices, no rendering) so every flag/stat it sets is applied
+  // exactly as written in script/00_prologue.vns, then stop at the first common-route scene.
+  const pc = { endings: Object.assign({}, persist.endings), cgs: {}, unlocks: JSON.parse(JSON.stringify(persist.unlocks)), gallery: {}, read: new Set() };
+  const nop = async () => {};
+  const sui = { say: () => Promise.resolve(), choice: () => Promise.resolve(0), yieldTick: () => sleep(0), onError: (m) => console.warn('[prologue-skip]', m),
+    date: nop, title: nop, color: nop, fx: nop, gauge() {}, expr() {}, persist() {}, present() {} };
+  const e = new Engine(DATA, sui, pc); e.S = e.newState();
+  let hit = null; const push0 = e.push.bind(e);
+  e.push = (sid) => { const ok = push0(sid); if (ok && !hit && sid in e.mainIndex && !isPrologue(sid)) { hit = sid; e.stopped = true; } return ok; };
+  await Promise.race([e.run(), sleep(10000)]);
+  e.stopped = true;
+  if (!hit) return null;
+  Object.assign(persist.unlocks, pc.unlocks);
+  const s = e.snapshot();
+  s.log = [{ n: '', t: '（序章已略過）', k: 'narr' }];
+  s.pres.cg = null; s.pres.sprites = {}; s.pres.counter = null; s.pres.combat = null;
+  return s;
+}
+function newGame() { $('#pick').classList.remove('hidden'); }
+async function pickPrologue(p) {
+  if (p === 'back') { $('#pick').classList.add('hidden'); return; }
+  if (p === 'watch') { startGame(null); return; }
+  const s = await prologueSkipped();
+  if (!s) { notify('無法略過序章，改為從頭開始。'); startGame(null); return; }
+  startGame(s); notify('已跳過序章。');
+}
+
+// ---------------- quick menu ----------------
+const QM_TOUCH = [['rollback', '回退'], ['prev', '上個選項'], ['skip', '快進'], ['auto', '自動'], ['qsave', '快速存'], ['qload', '快速讀'], ['menu', '選單']];
+const QM_PC = [['rollback', '回退'], ['prev', '上個選項'], ['history', '歷史'], ['skip', '快進'], ['auto', '自動'], ['relation', '關係'], ['save', '存檔'], ['qsave', '快速存'], ['qload', '快速讀'], ['prefs', '設定']];
+function buildQuick() {
+  const q = $('#quick'); const set = V.touch ? QM_TOUCH : QM_PC;
+  q.innerHTML = set.map(([a, l]) => `<button data-q="${a}">${l}</button>`).join('');
+  q.querySelectorAll('button').forEach(b => b.onclick = (e) => { e.stopPropagation(); Snd.unlock(); quickAct(b.dataset.q); });
+  q.classList.toggle('hidden', !T.inGame || !$('#gmenu').classList.contains('hidden'));
+  syncQuick();
+}
+function syncQuick() {
+  const q = $('#quick'); if (!q) return;
+  q.querySelectorAll('button').forEach(b => {
+    const a = b.dataset.q;
+    b.classList.toggle('on', (a === 'auto' && T.auto) || (a === 'skip' && T.skip));
+    if (a === 'qload') b.disabled = !Store.get('quick-1');
+    if (a === 'rollback') b.disabled = RB.length < 2;
   });
 }
-function slotRow(k, label, d) {
-  const m = d && d.meta;
-  return `<div class="slot" data-k="${k}"><div class="sn">${label}</div><div class="si">${m ? `<b>${esc(m.date || m.title || '')}</b><br>${esc(m.text || '')}` : '<span class="sd">— 空 —</span>'}</div>${m ? `<div class="sd">${new Date(m.ts).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>` : ''}</div>`;
+function quickAct(a) {
+  if (!T.inGame) return;
+  switch (a) {
+    case 'rollback': rollback(); break;
+    case 'prev': prevChoice(); break;
+    case 'skip': case 'auto': setMode(a, !T[a]); if (T[a] && T.typing) finishTyping(); if (T[a] && !T.typing && T.resolve) scheduleAdvance(); break;
+    case 'qsave': quickSave(); break;
+    case 'qload': quickLoad(); break;
+    case 'menu': openGM('save'); break;
+    default: openGM(a);
+  }
 }
-function logPanel() {
+
+// ---------------- game menu (left navigation + content), Ren'Py game_menu ----------------
+const SCREENS = { history: '歷史紀錄', save: '存檔', load: '讀取', relation: '關係', endings: '結局圖鑑', cg: 'CG鑑賞', prefs: '設定', about: '關於', help: '說明' };
+const GM = { screen: null, page: null,
+  render() {
+    const s = this.screen; $('#gm-title').textContent = SCREENS[s] || '';
+    const nav = T.inGame ? ['history', 'save', 'load', 'relation', 'endings', 'cg', 'prefs', 'about', 'title'] : ['start', 'load', 'endings', 'cg', 'prefs', 'about'];
+    if (!V.touch) nav.splice(nav.indexOf('about') + 1, 0, 'help');
+    $('#gm-nav').innerHTML = nav.map(k => `<button data-n="${k}" class="${k === s ? 'sel' : ''}">${k === 'title' ? '標題畫面' : k === 'start' ? '開始遊戲' : SCREENS[k]}</button>`).join('');
+    $('#gm-nav').querySelectorAll('button').forEach(b => b.onclick = (e) => { e.stopPropagation(); navAct(b.dataset.n); });
+    const c = $('#gm-content'); c.scrollTop = 0;
+    ({ history: scrHistory, save: () => scrFiles('save'), load: () => scrFiles('load'), relation: scrRelation, endings: scrEndings, cg: scrCG, prefs: scrPrefs, about: scrAbout, help: scrHelp })[s](c);
+  } };
+function openGM(screen) {
+  setMode('auto', false); setMode('skip', false); if (T.typing) finishTyping();
+  GM.screen = screen; $('#gmenu').classList.remove('hidden'); $('#quick').classList.add('hidden'); GM.render();
+}
+function closeGM() { $('#gmenu').classList.add('hidden'); $('#viewer').classList.add('hidden'); if (T.inGame) $('#quick').classList.remove('hidden'); syncQuick(); }
+function navAct(k) {
+  if (k === 'start') { closeGM(); newGame(); return; }
+  if (k === 'title') { confirmBox('確定要回到標題畫面嗎？\n未保存的進度將會遺失。', () => { autosave(); savePersist(); toTitle(); }); return; }
+  GM.screen = k; GM.render();
+}
+function scrHistory(c) {
   const L = (engine && engine.S.log) || [];
-  openPanel('紀錄', '<div class="log">' + L.map(l => l.k === 'choice' ? `<p class="ch">▸ ${esc(hiddenSafe(l.t, engine.S))}</p>` : `<p>${l.n ? `<span class="ln">${esc(l.n)}</span>` : ''}${esc(hiddenSafe(l.t, engine.S))}</p>`).join('') + '</div>');
-  const b = $('#pbody'); b.scrollTop = b.scrollHeight;
+  c.innerHTML = '<div class="hist">' + (L.length ? L.map(l => l.k === 'choice'
+    ? `<div class="h ch"><div class="hn">▸</div><div class="ht">${esc(hiddenSafe(l.t, engine.S))}</div></div>`
+    : `<div class="h"><div class="hn">${esc(l.n || '')}</div><div class="ht">${esc(hiddenSafe(l.t, engine.S))}</div></div>`).join('') : '<div class="empty">對話歷史紀錄為空。</div>') + '</div>';
+  c.scrollTop = c.scrollHeight;
 }
-function galleryPanel() {
-  const seenE = allEndings.filter(e => persist.endings[e]).length;
-  const cgIds = MAN.cg_ids;
-  const seenC = cgIds.filter(c => persist.cgs[c]).length;
-  let h = `<div class="sec">結局　${seenE} / ${allEndings.length}</div>`;
-  h += allEndings.map(e => `<div class="end-row">${persist.endings[e] ? esc(endingTitles[e] || e) : '<span style="color:#4b4740">？？？</span>'}</div>`).join('');
-  h += `<div class="sec">回憶　${seenC} / ${cgIds.length}</div><div class="grid">`;
-  h += cgIds.map(c => { if (!persist.cgs[c]) return '<div class="gi locked">？</div>';
-    const url = MAN.cg[c]; const note = typeof persist.cgs[c] === 'string' ? persist.cgs[c].replace(/^CG[_a-z0-9]*[：:]\s*/i, '').replace(/【.*$/, '').slice(0, 40) : '';
-    return url ? `<div class="gi" style="background-image:url('${url}')" data-cg="${c}"></div>` : `<div class="gi" data-cg="${c}">✦<br>${esc(note)}</div>`; }).join('');
-  h += '</div>';
-  openPanel('回憶', h);
-  $('#pbody').querySelectorAll('.gi[data-cg]').forEach(el => el.onclick = () => {
-    const c = el.dataset.cg; const url = MAN.cg[c]; const n = typeof persist.cgs[c] === 'string' ? persist.cgs[c] : '';
-    openPanel('回憶', url ? `<img src="${url}" style="width:100%" onerror="this.outerHTML='<div class=ph>✦</div>'"><div class="btnrow"><button class="pbtn" id="gback">返回</button></div>` : `<div style="display:flex;justify-content:center;padding-top:20px">${cgPlaceholder(c, n, null).replace('回憶', '回憶')}</div><div class="btnrow"><button class="pbtn" id="gback">返回</button></div>`);
-    $('#gback').onclick = galleryPanel;
+function scrFiles(mode) {
+  const c = $('#gm-content'); const n = perPage();
+  let page = GM.page || jget('page') || '1'; GM.page = page;
+  const label = page === 'auto' ? '自動存檔' : page === 'quick' ? '快速存檔' : `第 ${page} 頁`;
+  let h = `<div class="fs-label">${label}</div><div class="fs-grid">`;
+  for (let i = 1; i <= n; i++) {
+    const k = `${page}-${i}`; const r = Store.get(k);
+    h += `<button class="slotb" data-k="${k}">${thumbHTML(r)}<div class="st">${r ? fmtTime(r.meta.ts) : '空存檔位'}</div><div class="sn">${r ? esc(r.meta.name || '') : '&nbsp;'}</div></button>`;
+  }
+  h += '</div><div class="pages"><button data-p="<">&lt;</button><button data-p="auto">A</button><button data-p="quick">Q</button>';
+  for (let i = 1; i <= 9; i++) h += `<button data-p="${i}">${i}</button>`;
+  h += '<button data-p=">">&gt;</button></div>';
+  c.innerHTML = h;
+  c.querySelectorAll('.pages button').forEach(b => { const p = b.dataset.p; b.classList.toggle('sel', p === String(page));
+    b.onclick = (e) => { e.stopPropagation(); const order = ['auto', 'quick', '1', '2', '3', '4', '5', '6', '7', '8', '9']; let i = order.indexOf(String(page));
+      let np = p === '<' ? order[Math.max(0, i - 1)] : p === '>' ? order[Math.min(order.length - 1, i + 1)] : p; GM.page = np; jset('page', np); scrFiles(mode); }; });
+  c.querySelectorAll('.slotb').forEach(b => b.onclick = (e) => {
+    e.stopPropagation(); const k = b.dataset.k; const r = Store.get(k);
+    if (mode === 'save') {
+      if (!T.inGame) return;
+      const doSave = () => { if (saveTo(k)) { scrFiles('save'); syncQuick(); } };
+      if (r) confirmBox('確定要覆蓋這個存檔嗎？', doSave); else doSave();
+    } else if (r) {
+      if (T.inGame) confirmBox('讀取存檔會失去未保存的進度。\n確定要這樣做嗎？', () => loadRecord(r)); else loadRecord(r);
+    }
   });
 }
-function settingsPanel() {
-  openPanel('設定', `
-    <div class="set-row">音樂音量<input type="range" min="0" max="1" step="0.05" id="s-bgm" value="${settings.bgm}"></div>
-    <div class="set-row">環境音量<input type="range" min="0" max="1" step="0.05" id="s-amb" value="${settings.amb}"></div>
-    <div class="set-row">文字速度<input type="range" min="0" max="80" step="4" id="s-speed" value="${80 - settings.speed}"></div>
-    <div class="set-row">自動播放間隔<input type="range" min="0.5" max="2.5" step="0.1" id="s-auto" value="${settings.auto}"></div>
-    <div class="set-row">略過也包含未讀<input type="checkbox" id="s-skip" ${settings.skipUnread ? 'checked' : ''}></div>
-    <div class="btnrow">${T.inGame ? '<button id="s-title">回到標題</button>' : ''}<button id="s-wipe">清除全部資料</button></div>
-    <p style="font-size:12px;color:#8d877a;line-height:1.8;margin-top:18px">音樂預設很小聲，換曲時會慢慢淡入淡出。<br>iPhone：靜音開關打開時不會有聲音。</p>`);
-  const save = () => { jset('settings', settings); Snd.refresh(); };
-  $('#s-bgm').oninput = (e) => { settings.bgm = +e.target.value; save(); };
-  $('#s-amb').oninput = (e) => { settings.amb = +e.target.value; save(); };
-  $('#s-speed').oninput = (e) => { settings.speed = 80 - +e.target.value; save(); };
-  $('#s-auto').oninput = (e) => { settings.auto = +e.target.value; save(); };
-  $('#s-skip').onchange = (e) => { settings.skipUnread = e.target.checked; save(); };
-  if ($('#s-title')) $('#s-title').onclick = () => { if (confirm('回到標題？（未存檔的進度會保留在自動存檔）')) { autosave(); savePersist(); toTitle(); } };
-  $('#s-wipe').onclick = () => { if (confirm('確定清除所有存檔、已讀與回憶？')) { Object.keys(localStorage).filter(k => k.startsWith(LS)).forEach(k => localStorage.removeItem(k)); loadPersist(); toast('已清除'); toTitle(); } };
+function leadVisible(id, v) { if (!v[id + '_met']) return false; if (HIDDEN.includes(id)) return !!v[HIDDEN_UNLOCK[id]]; return true; }
+function hearts(n) { const k = Math.max(0, Math.min(5, Math.round((+n || 0) / 20))); return '♥'.repeat(k) + '♡'.repeat(5 - k); }
+function scrRelation(c) {
+  const S = engine && engine.S; if (!S) { c.innerHTML = ''; return; }
+  const v = S.v; const vis = LEADS.filter(id => leadVisible(id, v));
+  if (!GM.lead || !vis.includes(GM.lead)) GM.lead = vis[0] || null;
+  let h = `<div class="rel-tabs">` + LEADS.map(id => leadVisible(id, v) ? `<button data-l="${id}" class="${id === GM.lead ? 'sel' : ''}">${esc(NAMES[id])}</button>` : '<button disabled>？？？</button>').join('') + '</div>';
+  if (GM.lead) {
+    const id = GM.lead; const col = HEART && HEART[id]; const seen = col && (v.colors_seen || []).some(x => x === col || (col === 'hearth_red' && /^red/.test(x)));
+    const aff = +v['aff_' + id] || 0, bond = +v['bond_' + id] || 0;
+    const feel = aff >= 80 ? '放不下' : aff >= 60 ? '在意' : aff >= 35 ? '熟悉' : aff >= 15 ? '認識' : '陌生';
+    const trust = bond >= 80 ? '託付' : bond >= 58 ? '信任' : bond >= 35 ? '並肩' : bond >= 15 ? '觀望' : '警戒';
+    h += `<div class="rel-card"><h4>${esc(NAMES[id])}</h4>
+      <div class="rel-row"><span class="k">心動</span><span class="v">${hearts(aff)}</span><span class="d">${feel}</span></div>
+      <div class="rel-row"><span class="k">羈絆</span><span class="v g">${hearts(bond)}</span><span class="d">${trust}</span></div>
+      <div class="rel-row"><span class="k">他的顏色</span>${seen ? `<span class="v g" style="color:${COLOR_HEX[col] || ''}">●</span><span class="d">${esc(COLOR_NAME[col] || '')}</span>` : '<span class="d">？？？（走得更近，才會看見）</span>'}</div></div>`;
+  } else h += '<div class="rel-note">還沒有遇見任何人。</div>';
+  h += '<div class="rel-note">這裡只看得見大概的溫度。人心，沒有刻度。</div>';
+  c.innerHTML = h;
+  c.querySelectorAll('.rel-tabs button[data-l]').forEach(b => b.onclick = (e) => { e.stopPropagation(); GM.lead = b.dataset.l; scrRelation(c); });
 }
-function creditsPanel() { openPanel('製作名單', `<pre class="credits">${esc(MAN.credits || '')}</pre>`); }
+function scrEndings(c) {
+  const seen = allEndings.filter(e => persist.endings[e]).length;
+  c.innerHTML = `<div class="endl"><div class="cnt">已達成　${seen} / ${allEndings.length}</div>` + allEndings.map(e => persist.endings[e] ? `<div class="e">${esc(endingTitles[e] || e)}</div>` : '<div class="e lock">？？？</div>').join('') + '</div>';
+}
+function cgNote(c) { return typeof persist.cgs[c] === 'string' ? persist.cgs[c] : ''; }
+function scrCG(c) {
+  const ids = MAN.cg_ids; const seen = ids.filter(x => persist.cgs[x]).length;
+  c.innerHTML = `<div class="endl"><div class="cnt">已解鎖　${seen} / ${ids.length}</div></div><div class="cgg">` + ids.map(x => {
+    if (!persist.cgs[x]) return '<div class="cgi lock">？</div>';
+    const url = MAN.cg[x]; const note = cgNote(x).replace(/^CG[_a-z0-9]*[：:]\s*/i, '').replace(/【.*$/, '').slice(0, 30);
+    return url ? `<button class="cgi" data-cg="${x}" style="background-image:url('${url}')"></button>` : `<button class="cgi" data-cg="${x}">✦<br>${esc(note)}</button>`;
+  }).join('') + '</div>';
+  c.querySelectorAll('.cgi[data-cg]').forEach(b => b.onclick = (e) => {
+    e.stopPropagation(); const x = b.dataset.cg; const url = MAN.cg[x]; const vw = $('#viewer');
+    vw.innerHTML = url ? `<img src="${url}" alt="">` : cgPlaceholder(x, cgNote(x), null);
+    const img = vw.querySelector('img'); if (img) img.onerror = () => { vw.innerHTML = cgPlaceholder(x, cgNote(x), null); };
+    vw.classList.remove('hidden'); vw.onclick = (ev) => { ev.stopPropagation(); vw.classList.add('hidden'); };
+  });
+}
+function scrPrefs(c) {
+  const fsOK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  c.innerHTML = `<div class="prefs">
+    ${fsOK ? `<div class="pv"><h3>顯示</h3><button class="rb ${isFS ? '' : 'sel'}" data-a="win">視窗</button><button class="rb ${isFS ? 'sel' : ''}" data-a="fs">全螢幕</button></div>` : ''}
+    <div class="pv"><h3>略過</h3><button class="rb ${settings.skipUnread ? 'sel' : ''}" data-a="skipUnread">未讀文字</button><button class="rb ${settings.skipAfter ? 'sel' : ''}" data-a="skipAfter">選項後</button><button class="rb ${settings.trans ? '' : 'sel'}" data-a="trans">轉場</button></div>
+    <div class="pv"><h3>文字速度</h3><input type="range" min="0" max="80" step="4" id="s-speed" value="${80 - settings.speed}"></div>
+    <div class="pv"><h3>音樂音量</h3><input type="range" min="0" max="1" step="0.05" id="s-bgm" value="${settings.bgm}"></div>
+    <div class="pv"><h3>自動前進時間</h3><input type="range" min="0" max="2" step="0.1" id="s-auto" value="${(2.5 - settings.auto).toFixed(1)}"></div>
+    <div class="pv"><h3>環境音量</h3><input type="range" min="0" max="1" step="0.05" id="s-amb" value="${settings.amb}"></div>
+    <div class="pv"></div>
+    <div class="pv"><button class="rb ${settings.mute ? 'sel' : ''}" data-a="mute">全部靜音</button></div>
+  </div>`;
+  c.querySelectorAll('.rb').forEach(b => b.onclick = (e) => {
+    e.stopPropagation(); const a = b.dataset.a;
+    if (a === 'fs') { const el = document.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el); setTimeout(() => scrPrefs(c), 400); return; }
+    if (a === 'win') { if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document); setTimeout(() => scrPrefs(c), 400); return; }
+    if (a === 'trans') settings.trans = !settings.trans; else settings[a] = !settings[a];
+    $('#game').classList.toggle('notrans', !settings.trans);
+    saveSettings(); scrPrefs(c);
+  });
+  $('#s-speed').oninput = (e) => { settings.speed = 80 - +e.target.value; saveSettings(); };
+  $('#s-bgm').oninput = (e) => { settings.bgm = +e.target.value; saveSettings(); };
+  $('#s-amb').oninput = (e) => { settings.amb = +e.target.value; saveSettings(); };
+  $('#s-auto').oninput = (e) => { settings.auto = +(2.5 - +e.target.value).toFixed(2); saveSettings(); };
+}
+function scrAbout(c) { c.innerHTML = `<pre class="credits">${esc(MAN.credits || '')}</pre>`; }
+function scrHelp(c) {
+  c.innerHTML = `<div class="helpt"><b>點擊／Enter／空白鍵</b>推進對話、作出選擇<br><b>滾輪向上／PageUp</b>回退<br><b>右鍵／Esc</b>開啟選單<br><b>Ctrl（按住）</b>快進<br><b>F</b>全螢幕<br><br>
+  <b>回退</b>回到上一句<br><b>上個選項</b>回到上一個選擇<br><b>快進</b>略過已讀文字<br><b>自動</b>自動前進<br><b>快速存／快速讀</b>一鍵存檔與讀取</div>`;
+}
+
+// ---------------- main menu ----------------
+const MM = [['start', '開始遊戲'], ['load', '讀取'], ['endings', '結局圖鑑'], ['cg', 'CG鑑賞'], ['prefs', '設定'], ['about', '關於'], ['help', '說明']];
+function buildMainNav() {
+  const nav = $('#mm-nav'); if (!nav) return;
+  nav.innerHTML = MM.filter(([k]) => k !== 'help' || !V.touch).map(([k, l]) => `<button data-m="${k}">${l}</button>`).join('');
+  nav.querySelectorAll('button').forEach(b => b.onclick = (e) => { e.stopPropagation(); Snd.unlock(); const k = b.dataset.m; if (k === 'start') newGame(); else openGM(k); });
+}
 
 // ---------------- boot ----------------
 async function boot() {
   const v = document.querySelector('script[src*="ui.js"]').src.split('v=')[1] || '';
-  const [d, m] = await Promise.all([fetch('data/script.json?v=' + v).then(r => r.json()), fetch('data/manifest.json?v=' + v).then(r => r.json())]);
+  $('#mm-ver').textContent = 'v' + v;
+  fit(); addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 250));
+  const [d, m] = await Promise.all([fetch('data/script.json?v=' + v).then(r => r.json()), fetch('data/manifest.json?v=' + v).then(r => r.json()), Store.init()]);
   DATA = d; MAN = m;
   for (const k of ['sprites', 'cg', 'bg', 'expr', 'bgm', 'amb']) MAN[k] = MAN[k] || {};
   MAN.cg_ids = MAN.cg_ids || [];
@@ -416,30 +675,30 @@ async function boot() {
     if (!allEndings.includes(id)) allEndings.push(id);
     if (!endingTitles[id]) endingTitles[id] = sc.title || id;
   }
-  loadPersist();
-  $('#app').addEventListener('click', onTap);
-  document.addEventListener('touchstart', () => Snd.unlock(), { passive: true, once: false });
-  document.addEventListener('click', () => Snd.unlock());
-  document.querySelectorAll('#controls button').forEach(b => b.onclick = (e) => {
-    e.stopPropagation(); Snd.unlock(); const a = b.dataset.act;
-    if (a === 'auto' || a === 'skip') { setMode(a, !T[a]); if (T[a] && T.typing) finishTyping(); if (T[a] && !T.typing && T.resolve) scheduleAdvance(); }
-    else if (a === 'log') logPanel(); else if (a === 'save') slotsPanel('save'); else if (a === 'load') slotsPanel('load'); else if (a === 'menu') settingsPanel();
+  loadPersist(); migrateOld();
+  $('#game').classList.toggle('notrans', !settings.trans);
+  $('#game').addEventListener('click', onTap);
+  $('#game').addEventListener('contextmenu', (e) => { e.preventDefault(); if (T.inGame && !overlayOpen()) openGM('save'); else if (!$('#gmenu').classList.contains('hidden')) gmReturn(); });
+  $('#game').addEventListener('wheel', (e) => { if (T.inGame && !overlayOpen() && e.deltaY < 0) rollback(); }, { passive: true });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { if (!$('#confirm').classList.contains('hidden')) $('#cf-no').click(); else if (!$('#viewer').classList.contains('hidden')) $('#viewer').classList.add('hidden'); else if (!$('#gmenu').classList.contains('hidden')) gmReturn(); else if (T.inGame) openGM('save'); return; }
+    if (e.key === 'f' || e.key === 'F') { const el = document.documentElement; if (document.fullscreenElement) document.exitFullscreen(); else if (el.requestFullscreen) el.requestFullscreen().catch(() => {}); return; }
+    if (!T.inGame || overlayOpen()) return;
+    if (e.key === 'Control' && !T.skip) { setMode('skip', true); if (T.typing) finishTyping(); else if (T.resolve) scheduleAdvance(); return; }
+    if (e.key === 'PageUp') { rollback(); return; }
+    if ((e.key === 'Enter' || e.key === ' ') && !T.choosing) { e.preventDefault(); onTap({ target: document.body }); }
   });
-  document.querySelectorAll('.tmenu button').forEach(b => b.onclick = (e) => {
-    e.stopPropagation(); Snd.unlock(); const t = b.dataset.t;
-    if (t === 'start') { if (jget('auto') && !confirm('開始新遊戲？（自動存檔會被取代）')) return; startGame(null); }
-    else if (t === 'continue') { const a = jget('auto'); if (a) startGame(a.snap); }
-    else if (t === 'load') slotsPanel('load'); else if (t === 'gallery') galleryPanel(); else if (t === 'settings') settingsPanel(); else if (t === 'credits') creditsPanel();
-  });
-  $('#pclose').onclick = (e) => { e.stopPropagation(); closePanel(); };
-  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent); const standalone = navigator.standalone || matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches;
-  if (ios && !standalone) $('#installhint').innerHTML = 'iPhone：點 Safari 的「分享」→「加入主畫面」<br>就能全螢幕遊玩';
+  document.addEventListener('keyup', (e) => { if (e.key === 'Control' && T.skip) setMode('skip', false); });
+  document.addEventListener('touchstart', () => Snd.unlock(), { passive: true });
+  $('#gm-return').onclick = (e) => { e.stopPropagation(); gmReturn(); };
+  $('#pick').querySelectorAll('button').forEach(b => b.onclick = (e) => { e.stopPropagation(); Snd.unlock(); pickPrologue(b.dataset.p); });
   window.addEventListener('pagehide', () => { autosave(); savePersist(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) { autosave(); savePersist(); } });
   $('#boot').remove();
   toTitle();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js').catch(() => {});
 }
-window.__dhwm = { get engine() { return engine; }, T, startGame, toTitle };
+function gmReturn() { closeGM(); if (!T.inGame) $('#mainmenu').classList.remove('hidden'); }
+window.__dhwm = { get engine() { return engine; }, T, V, Store, startGame, toTitle, prologueSkipped, pickPrologue, openGM, quickAct, get RB() { return RB; }, get persist() { return persist; } };
 boot().catch(e => { const b = $('#boot'); if (b) b.innerHTML = '燈火未眠<small>載入失敗，請重新整理（' + esc(e.message) + '）</small>'; });
 })();

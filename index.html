@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>燈火未眠</title>
-<meta name="theme-color" content="#0b0d1e">
+<meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -12,57 +12,59 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="style.css?v=1793033914">
+<link rel="stylesheet" href="style.css?v=1793034794">
 </head>
 <body>
-<div id="app">
+<div id="frame"><div id="safe"></div>
+<div id="game">
   <div id="stage">
     <div id="bg" class="bg"></div><div id="bg2" class="bg"></div>
-    <div id="bglabel"></div>
     <div id="sprites"></div>
     <div id="cg"></div>
-    <div id="fxlayer"></div>
     <div id="rain"></div>
+    <div id="fxlayer"></div>
   </div>
-  <div id="hud">
+  <div id="hud" class="hidden">
+    <div id="status"><div id="colorbar"></div><div class="gauge" id="g-load"><span>負荷</span><i></i></div><div class="gauge" id="g-loc"><span>失控</span><i></i></div></div>
     <div id="datechip"></div>
-    <div id="colorbar"></div>
-    <div id="gauges"><div class="gauge" id="g-load"><span>負荷</span><i></i></div><div class="gauge" id="g-loc"><span>失控</span><i></i></div></div>
     <div id="counter"></div>
   </div>
-  <div id="textbox" class="hidden">
-    <div id="namebox"></div>
+  <div id="window" class="hidden">
+    <div id="namebox"><span id="who"></span></div>
     <div id="text"></div>
-    <div id="next">▾</div>
-  </div>
-  <div id="controls" class="hidden">
-    <button data-act="auto">自動</button><button data-act="skip">略過</button><button data-act="log">紀錄</button>
-    <button data-act="save">存檔</button><button data-act="load">讀檔</button><button data-act="menu">選單</button>
+    <div id="ctc">▼</div>
   </div>
   <div id="choices" class="hidden"><div id="cprompt"></div><div id="clist"></div><div id="ctimer"><i></i></div></div>
   <div id="card" class="hidden"><div class="c1"></div><div class="c2"></div></div>
-  <div id="title-screen">
-    <div class="tglow"></div>
-    <div class="tmain">
-      <div class="tlogo">燈火未眠</div>
-      <div class="tsub">— 在沒有顏色的世界裡，有人替她點燈 —</div>
-      <div class="tmenu">
-        <button data-t="start">開始</button>
-        <button data-t="continue" id="btn-continue">繼續</button>
-        <button data-t="load">讀取</button>
-        <button data-t="gallery">回憶</button>
-        <button data-t="settings">設定</button>
-        <button data-t="credits">製作名單</button>
-      </div>
-      <div class="thint" id="installhint"></div>
-    </div>
+  <div id="quick" class="hidden"></div>
+
+  <div id="mainmenu">
+    <div class="mm-sky"></div><div class="mm-glow"></div>
+    <div class="mm-nav nav" id="mm-nav"></div>
+    <div class="mm-logo"><div class="l1">在沒有顏色的世界裡</div><div class="l2">燈火未眠</div><div class="l3">— 有人替她點燈 —</div></div>
+    <div class="mm-ver" id="mm-ver"></div>
   </div>
-  <div id="panel" class="hidden"><div class="phead"><span id="ptitle"></span><button id="pclose">✕</button></div><div id="pbody"></div></div>
-  <div id="toast"></div>
+
+  <div id="gmenu" class="hidden">
+    <div class="gm-bg"></div>
+    <div class="gm-navframe"></div>
+    <div class="gm-title" id="gm-title"></div>
+    <div class="gm-nav nav" id="gm-nav"></div>
+    <div class="gm-content" id="gm-content"></div>
+    <button class="gm-return" id="gm-return">返回</button>
+  </div>
+
+  <div id="pick" class="hidden"><div class="pk-prompt">要觀看序章嗎？</div><div class="pk-list"><button data-p="watch">觀看序章</button><button data-p="skip">跳過序章</button></div><div class="pk-note">跳過時，序章的選項以預設處理，直接從共通線開始。</div><button class="pk-back" data-p="back">返回</button></div>
+
+  <div id="viewer" class="hidden"></div>
+  <div id="confirm" class="hidden"><div class="cf-box"><div class="cf-msg" id="cf-msg"></div><div class="cf-btns"><button id="cf-yes">是</button><button id="cf-no">否</button></div></div></div>
+  <div id="notify"></div>
   <div id="boot">燈火未眠<small>載入中……</small></div>
 </div>
-<script src="js/expr.js?v=1793033914"></script>
-<script src="js/engine.js?v=1793033914"></script>
-<script src="js/ui.js?v=1793033914"></script>
+<div id="rotate">將手機橫放，畫面會更大</div>
+</div>
+<script src="js/expr.js?v=1793034794"></script>
+<script src="js/engine.js?v=1793034794"></script>
+<script src="js/ui.js?v=1793034794"></script>
 </body>
 </html>
