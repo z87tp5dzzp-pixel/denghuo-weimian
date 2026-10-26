@@ -26,7 +26,6 @@ const LOC_NAME = { medbay: '醫療室', outside_wall: '牆外', old_port_bar: '�
   rift_edge: '裂隙邊緣', bar: '酒館', chapel_yard: '禮拜堂中庭', lighthouse: '燈塔', east_seawall: '東海堤' };
 const NOON_T = ['predawn', 'dawn', 'morning', 'noon', 'dusk'];
 const NIGHT_T = ['evening', 'night', 'late_night'];
-const BOND_PER_SCENE = 2;
 const GUIDE_REFS = /\b(g1|g2|guide_g1|guide_g2|anchor|guide_pair|guide_tag|guide_mode|__gi)\b/;
 
 function weatherOf(d) {
@@ -181,12 +180,7 @@ class Engine {
   afterScene(sid, top) {
     const v = this.S.v;
     if (sid === 'GUIDE_DAILY' && v.g1 && v.g2) this.guideEffects();
-    // Engine-supplied bond growth: script only sets bond_X sparsely (e.g. cecil max +10),
-    // so each completed personal route scene adds BOND_PER_SCENE to that lead's bond.
-    const sc = this.D.scenes[sid];
-    if (sc && sc.lead && LEADS.includes(sc.lead) && /^routes\//.test(sc.file || '') && !/^(END_|EPI|FATE_)/.test(sid)) {
-      const k = 'bond_' + sc.lead; v[k] = Math.min(100, X.num(v[k]) + BOND_PER_SCENE);
-    }
+    // (2026-10-26) Engine bond stopgap removed: script milestones supply bond_X (FORMAT §H).
     if (sid === 'EVE_TOGETHER') {
       const L = v.eve_lovers || []; const b = X.num(v.eve_pair_bonus) || 3;
       for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) { const k = 'pair_bond_' + pairKey(L[i], L[j]); v[k] = X.num(v[k]) + b; }

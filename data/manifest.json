@@ -1,5 +1,5 @@
 {
-"version": 1793033215,
+"version": 1793033914,
 "sprites": {
 "ash": {
 "casual": "img/sprites/ash_casual.webp",
@@ -471,6 +471,10 @@
 "cg_eve_together",
 "cg_ex07_palm_kiss_a",
 "cg_ex07_palm_kiss_b",
+"cg_ex20_kiss_a",
+"cg_ex20_kiss_b",
+"cg_ex23_kiss_a",
+"cg_ex23_kiss_b",
 "cg_fate_eclipse_arno",
 "cg_fate_eclipse_ash",
 "cg_fate_eclipse_cecil",
@@ -1054,6 +1058,10 @@
 "cg_eve_together",
 "cg_ex07_palm_kiss_a",
 "cg_ex07_palm_kiss_b",
+"cg_ex20_kiss_a",
+"cg_ex20_kiss_b",
+"cg_ex23_kiss_a",
+"cg_ex23_kiss_b",
 "cg_fate_eclipse_arno",
 "cg_fate_eclipse_ash",
 "cg_fate_eclipse_cecil",
