@@ -1,5 +1,5 @@
 {
-"version": 1793039746,
+"version": 1793040603,
 "sprites": {
 "ash": {
 "casual": "img/sprites/ash_casual.webp",
@@ -356,6 +356,7 @@
 "amb_sea_calm": "audio/amb/waves_shore.mp3",
 "amb_sea_night": "audio/amb/waves_shore.mp3",
 "amb_sea_shallow": "audio/amb/waves_shore.mp3",
+"amb_sea_wave": "audio/amb/waves_shore.mp3",
 "amb_sea_waves": "audio/amb/waves_shore.mp3",
 "amb_storm": "audio/amb/rain_window.mp3",
 "amb_wasteland_wind": "audio/amb/wind_howl_soft.mp3",
@@ -1680,6 +1681,7 @@
 "amb_kitchen_morning",
 "amb_market_crowd",
 "amb_market_soft",
+"amb_night_insects",
 "amb_rift_hum",
 "amb_rubble_drip",
 "amb_server_hum",
