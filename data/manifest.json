@@ -1,5 +1,5 @@
 {
-"version": 1793081659,
+"version": 1793081942,
 "sprites": {
 "ash": {
 "casual": "img/sprites/ash_casual.webp",
@@ -67,6 +67,16 @@
 }
 },
 "cg": {
+"cg_c10_glove": "img/cg/cg_c10_glove.webp",
+"cg_c14_sunrise_smile": "img/cg/cg_c14_sunrise_smile.webp",
+"cg_c15_blue": "img/cg/cg_c15_blue.webp",
+"cg_c23_kiss_a": "img/cg/cg_c23_kiss_a.webp",
+"cg_c23_kiss_b": "img/cg/cg_c23_kiss_b.webp",
+"cg_c26_tear": "img/cg/cg_c26_tear.webp",
+"cg_cx12_kiss_a": "img/cg/cg_cx12_kiss_a.webp",
+"cg_cx12_kiss_b": "img/cg/cg_cx12_kiss_b.webp",
+"cg_end_cecil_blue": "img/cg/cg_end_cecil_blue.webp",
+"cg_end_cecil_death": "img/cg/cg_end_cecil_death.webp",
 "cg_end_kael_dawn": "img/cg/cg_end_kael_dawn.webp",
 "cg_end_kael_death": "img/cg/cg_end_kael_death.webp",
 "cg_end_rowan_death": "img/cg/cg_end_rowan_death.webp",
@@ -1480,14 +1490,6 @@
 "cg_ax09_bite_a",
 "cg_ax09_bite_b",
 "cg_ax16_run",
-"cg_c10_glove",
-"cg_c14_sunrise_smile",
-"cg_c15_blue",
-"cg_c23_kiss_a",
-"cg_c23_kiss_b",
-"cg_c26_tear",
-"cg_cx12_kiss_a",
-"cg_cx12_kiss_b",
 "cg_e07_palm",
 "cg_e13_shallows",
 "cg_e14_green",
@@ -1498,8 +1500,6 @@
 "cg_end_arno_death",
 "cg_end_ash_death",
 "cg_end_ash_field",
-"cg_end_cecil_blue",
-"cg_end_cecil_death",
 "cg_end_elio_death",
 "cg_end_elio_green",
 "cg_end_harem_table",
