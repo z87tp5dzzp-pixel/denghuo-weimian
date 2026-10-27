@@ -1,5 +1,5 @@
 {
-"version": 1793081318,
+"version": 1793081621,
 "sprites": {
 "ash": {
 "casual": "img/sprites/ash_casual.webp",
@@ -69,6 +69,8 @@
 "cg": {
 "cg_end_kael_dawn": "img/cg/cg_end_kael_dawn.webp",
 "cg_end_kael_death": "img/cg/cg_end_kael_death.webp",
+"cg_end_rowan_death": "img/cg/cg_end_rowan_death.webp",
+"cg_end_rowan_sea": "img/cg/cg_end_rowan_sea.webp",
 "cg_k08_back_to_back": "img/cg/cg_k08_back_to_back.webp",
 "cg_k11_left_hand": "img/cg/cg_k11_left_hand.webp",
 "cg_k12_sea_smile": "img/cg/cg_k12_sea_smile.webp",
@@ -108,6 +110,16 @@
 "cg_p03d_tattoo_lamp": "img/cg/cg_p03d_tattoo_lamp.webp",
 "cg_r01_palm_fire": "img/cg/cg_r01_palm_fire.webp",
 "cg_r05_fire_in_snow": "img/cg/cg_r05_fire_in_snow.webp",
+"cg_r10_fire_on_sea": "img/cg/cg_r10_fire_on_sea.webp",
+"cg_r14_burn": "img/cg/cg_r14_burn.webp",
+"cg_r16_smile": "img/cg/cg_r16_smile.webp",
+"cg_r18_kiss_a": "img/cg/cg_r18_kiss_a.webp",
+"cg_r18_kiss_b": "img/cg/cg_r18_kiss_b.webp",
+"cg_r22_rain": "img/cg/cg_r22_rain.webp",
+"cg_r24_hearth": "img/cg/cg_r24_hearth.webp",
+"cg_r29_glove": "img/cg/cg_r29_glove.webp",
+"cg_rx10_kiss_a": "img/cg/cg_rx10_kiss_a.webp",
+"cg_rx10_kiss_b": "img/cg/cg_rx10_kiss_b.webp",
 "cg_shared_sense": "img/cg/cg_shared_sense.webp"
 },
 "bg": {
@@ -1508,8 +1520,6 @@
 "cg_end_noa_death",
 "cg_end_orion_dawn",
 "cg_end_orion_death",
-"cg_end_rowan_death",
-"cg_end_rowan_sea",
 "cg_end_silas_death",
 "cg_end_silas_snow",
 "cg_end_silas_terminus",
@@ -1626,16 +1636,6 @@
 "cg_ox12_kiss_b",
 "cg_ox15_kiss_a",
 "cg_ox15_kiss_b",
-"cg_r10_fire_on_sea",
-"cg_r14_burn",
-"cg_r16_smile",
-"cg_r18_kiss_a",
-"cg_r18_kiss_b",
-"cg_r22_rain",
-"cg_r24_hearth",
-"cg_r29_glove",
-"cg_rx10_kiss_a",
-"cg_rx10_kiss_b",
 "cg_s11_pulse",
 "cg_s14_tears",
 "cg_s15_sea_snow",
