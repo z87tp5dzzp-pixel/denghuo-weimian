@@ -1,5 +1,5 @@
 {
-"version": 1793080450,
+"version": 1793080797,
 "sprites": {
 "ash": {
 "casual": "img/sprites/ash_casual.webp",
@@ -67,6 +67,9 @@
 }
 },
 "cg": {
+"cg_m1_02_tv": "img/cg/cg_m1_02_tv.webp",
+"cg_m3_03_ben": "img/cg/cg_m3_03_ben.webp",
+"cg_notice_card": "img/cg/cg_notice_card.webp",
 "cg_p01_snow_breath": "img/cg/cg_p01_snow_breath.webp",
 "cg_p01_snow_covers_red": "img/cg/cg_p01_snow_covers_red.webp",
 "cg_p02_collapsed_snow": "img/cg/cg_p02_collapsed_snow.webp",
@@ -77,7 +80,8 @@
 "cg_p02d_cloak_wall": "img/cg/cg_p02d_cloak_wall.webp",
 "cg_p03b_dawn_wall": "img/cg/cg_p03b_dawn_wall.webp",
 "cg_p03b_kael_hand": "img/cg/cg_p03b_kael_hand.webp",
-"cg_p03d_tattoo_lamp": "img/cg/cg_p03d_tattoo_lamp.webp"
+"cg_p03d_tattoo_lamp": "img/cg/cg_p03d_tattoo_lamp.webp",
+"cg_r05_fire_in_snow": "img/cg/cg_r05_fire_in_snow.webp"
 },
 "bg": {
 "bg_alley_rain_night": "img/bg/bg_alley_rain_night.webp",
@@ -1590,12 +1594,10 @@
 "cg_l23_kiss_a",
 "cg_l23_kiss_b",
 "cg_lx15_roof",
-"cg_m1_02_tv",
 "cg_m1_03_two_lamps",
 "cg_m1_07_not_a_blade",
 "cg_m1_07_sea_dawn",
 "cg_m2_03_mercy",
-"cg_m3_03_ben",
 "cg_m4_02_file",
 "cg_n12_edge",
 "cg_n15_glass",
@@ -1606,7 +1608,6 @@
 "cg_n24_kiss_a",
 "cg_n24_kiss_b",
 "cg_night_of_colors_tattoo",
-"cg_notice_card",
 "cg_o02_hand_from_window",
 "cg_o10_hand",
 "cg_o14_tide",
@@ -1624,7 +1625,6 @@
 "cg_ox15_kiss_a",
 "cg_ox15_kiss_b",
 "cg_r01_palm_fire",
-"cg_r05_fire_in_snow",
 "cg_r10_fire_on_sea",
 "cg_r14_burn",
 "cg_r16_smile",
