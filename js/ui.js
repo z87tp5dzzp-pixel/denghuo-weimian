@@ -337,12 +337,17 @@ const ui = {
         if (was) b.classList.add('was');
         b.onclick = (ev) => { ev.stopPropagation(); Snd.unlock(); pick(i); }; list.appendChild(b);
       });
+      // fit long option lists inside the 1280×720 frame: dense ≥5, two columns ≥9, scroll if still too tall
+      const colN = V.small ? 7 : 9; list.classList.toggle('dense', opts.length >= 5 && opts.length < colN); list.classList.toggle('cols', opts.length >= colN);
+      box.classList.toggle('noprompt', !prompt);
+      list.classList.remove('over'); list.scrollTop = 0;
       const tm = $('#ctimer'); const sec = parseFloat(timed) || 0;
       if (sec > 0) { tm.classList.add('on'); const bar = tm.firstChild; bar.style.transition = 'none'; bar.style.transform = 'scaleX(1)';
         requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transition = `transform ${sec}s linear`; bar.style.transform = 'scaleX(0)'; }));
         tid = setTimeout(() => pick(0), sec * 1000); }
       else tm.classList.remove('on');
       box.classList.remove('hidden');
+      list.classList.toggle('over', list.scrollHeight > list.clientHeight + 1);
     });
   },
   yieldTick() { return sleep(0); },
