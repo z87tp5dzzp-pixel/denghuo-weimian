@@ -153,15 +153,22 @@ function setBg(id, fx) {
   nxt.style.opacity = 1; els[R.front].style.opacity = 0; R.front = 1 - R.front;
   const r = $('#rain'); r.className = /snow/.test(id) ? 'on snow' : /rain|storm/.test(id) ? 'on' : '';
 }
+// hidden leads: silhouette until their hidden quest triggers (arno: she knows his face from the start)
+const FACE_UNLOCK = { silas: 'silas_unlocked', noa: 'noa_unlocked', vex: 'vex_unlocked', arno: 'arno_met' };
+let SPR_VARS = {};
 function spriteUrl(id, outfit, ex) {
-  if (HIDDEN.includes(id)) return null;           // hidden leads stay unseen
   if (/^young|_young/.test(outfit || '')) return null;
+  if (HIDDEN.includes(id) && !SPR_VARS[FACE_UNLOCK[id]]) {
+    const mm = (MAN.sprites_masked || {})[id]; if (!mm) return null;
+    return mm[outfit] || mm.uniform || Object.values(mm)[0] || null;
+  }
   const e = MAN.expr[`${id}_${outfit}_${ex}`]; if (e) return e;
   const m = MAN.sprites[id]; if (!m) return null;
   return m[outfit] || m.uniform || Object.values(m)[0] || null;
 }
 const POS = { far_left: 12, left: 27, center: 50, right: 73, far_right: 88 };
 function renderSprites(S) {
+  SPR_VARS = S.v || {};
   const P = S.pres; const box = $('#sprites'); const want = P.sprites || {};
   const ids = Object.keys(want);
   for (const id of Object.keys(R.sprites)) if (!want[id]) { const n = R.sprites[id]; n.classList.remove('on'); setTimeout(() => n.remove(), 500); delete R.sprites[id]; }

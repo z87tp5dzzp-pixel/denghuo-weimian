@@ -1,6 +1,12 @@
 {
-"version": 1793082293,
+"version": 1793298444,
 "sprites": {
+"arno": {
+"casual": "img/sprites/arno_casual.webp",
+"research": "img/sprites/arno_research.webp",
+"coat": "img/sprites/arno_casual.webp",
+"uniform": "img/sprites/arno_research.webp"
+},
 "ash": {
 "casual": "img/sprites/ash_casual.webp",
 "uniform": "img/sprites/ash_uniform.webp"
@@ -42,6 +48,13 @@
 "mora": {
 "uniform": "img/sprites/mora_uniform.webp"
 },
+"noa": {
+"bartender": "img/sprites/noa_bartender.webp",
+"casual": "img/sprites/noa_casual.webp",
+"uniform": "img/sprites/noa_bartender.webp",
+"battle": "img/sprites/noa_bartender.webp",
+"gala": "img/sprites/noa_bartender.webp"
+},
 "orion": {
 "casual": "img/sprites/orion_casual.webp",
 "uniform": "img/sprites/orion_uniform.webp"
@@ -49,6 +62,12 @@
 "rowan": {
 "casual": "img/sprites/rowan_casual.webp",
 "uniform": "img/sprites/rowan_uniform.webp"
+},
+"silas": {
+"casual": "img/sprites/silas_casual.webp",
+"executioner": "img/sprites/silas_executioner.webp",
+"uniform": "img/sprites/silas_executioner.webp",
+"battle": "img/sprites/silas_executioner.webp"
 },
 "sophia": {
 "uniform": "img/sprites/sophia_uniform.webp"
@@ -61,6 +80,12 @@
 },
 "vaughn": {
 "uniform": "img/sprites/vaughn_uniform.webp"
+},
+"vex": {
+"camp": "img/sprites/vex_camp.webp",
+"rebel": "img/sprites/vex_rebel.webp",
+"battle": "img/sprites/vex_rebel.webp",
+"casual": "img/sprites/vex_camp.webp"
 },
 "yasi": {
 "uniform": "img/sprites/yasi_uniform.webp"
@@ -1691,6 +1716,33 @@
 "amb_truck_engine",
 "amb_water_tap"
 ]
+},
+"sprites_masked": {
+"arno": {
+"casual": "img/sprites/arno_casual_masked.webp",
+"research": "img/sprites/arno_research_masked.webp",
+"coat": "img/sprites/arno_casual_masked.webp",
+"uniform": "img/sprites/arno_research_masked.webp"
+},
+"noa": {
+"bartender": "img/sprites/noa_bartender_masked.webp",
+"casual": "img/sprites/noa_casual_masked.webp",
+"uniform": "img/sprites/noa_bartender_masked.webp",
+"battle": "img/sprites/noa_bartender_masked.webp",
+"gala": "img/sprites/noa_bartender_masked.webp"
+},
+"silas": {
+"casual": "img/sprites/silas_casual_masked.webp",
+"executioner": "img/sprites/silas_executioner_masked.webp",
+"uniform": "img/sprites/silas_executioner_masked.webp",
+"battle": "img/sprites/silas_executioner_masked.webp"
+},
+"vex": {
+"camp": "img/sprites/vex_camp_masked.webp",
+"rebel": "img/sprites/vex_rebel_masked.webp",
+"battle": "img/sprites/vex_rebel_masked.webp",
+"casual": "img/sprites/vex_camp_masked.webp"
+}
 },
 "credits": "《燈火未眠》 音樂・音效 Music & Sound\n\n── 音樂 Music ──\n\"Dreams Become Real\" Kevin MacLeod (incompetech.com)\n\"Lost Time\" Kevin MacLeod (incompetech.com)\n\"At Rest\" Kevin MacLeod (incompetech.com)\n\"Morning\" Kevin MacLeod (incompetech.com)\n\"Calmant\" Kevin MacLeod (incompetech.com)\n\"Wounded\" Kevin MacLeod (incompetech.com)\n\"Meditation Impromptu 01\" Kevin MacLeod (incompetech.com)\n\"Eternal Hope\" Kevin MacLeod (incompetech.com)\n\"Reawakening\" Kevin MacLeod (incompetech.com)\n\"Long Note Three\" Kevin MacLeod (incompetech.com)\n\"Lasting Hope\" Kevin MacLeod (incompetech.com)\n\"Sad Trio\" Kevin MacLeod (incompetech.com)\n\"Comfortable Mystery\" Kevin MacLeod (incompetech.com)\n\"Danse Morialta\" Kevin MacLeod (incompetech.com)\n\"Promises to Keep\" Kevin MacLeod (incompetech.com)\n\"Evening\" Kevin MacLeod (incompetech.com)\n\"Dark Times\" Kevin MacLeod (incompetech.com)\n\"Clear Air\" Kevin MacLeod (incompetech.com)\n\"Gymnopedie No. 3\" Kevin MacLeod (incompetech.com)\n\"Water Lily\" Kevin MacLeod (incompetech.com)\n\"Frozen Star\" Kevin MacLeod (incompetech.com)\n\"Windswept\" Kevin MacLeod (incompetech.com)\n\"Two Together\" Kevin MacLeod (incompetech.com)\n\"Winter Chimes\" Kevin MacLeod (incompetech.com)\n\"Night on the Docks - Piano\" Kevin MacLeod (incompetech.com)\n\"When The Wind Blows\" Kevin MacLeod (incompetech.com)\n\"Memory Lane\" Kevin MacLeod (incompetech.com)\n\"Immersed\" Kevin MacLeod (incompetech.com)\n\"Aretes\" Kevin MacLeod (incompetech.com)\n\"Darkest Child\" Kevin MacLeod (incompetech.com)\n\"Disquiet\" Kevin MacLeod (incompetech.com)\n\"Night Vigil\" Kevin MacLeod (incompetech.com)\n\"Luminous Rain\" Kevin MacLeod (incompetech.com)\n\"Heart of Nowhere\" Kevin MacLeod (incompetech.com)\n\"Night on the Docks - Sax\" Kevin MacLeod (incompetech.com)\n\"Starry\" Kevin MacLeod (incompetech.com)\n\"Amazing Grace 2011\" Kevin MacLeod (incompetech.com)\n\"Merry Go Slower\" Kevin MacLeod (incompetech.com)\n\"Thinking Music\" Kevin MacLeod (incompetech.com)\n\"Friday Morning\" Kevin MacLeod (incompetech.com)\n\"Lamentation\" Kevin MacLeod (incompetech.com)\n\"Colorless Aura\" Kevin MacLeod (incompetech.com)\n\"Canon in D Major\" Kevin MacLeod (incompetech.com)\n\"Penumbra\" Kevin MacLeod (incompetech.com)\nLicensed under Creative Commons: By Attribution 4.0 License\nhttp://creativecommons.org/licenses/by/4.0/\n\n燈火主題（音樂盒／鋼琴／大提琴與豎琴）\nOriginal theme — composed for this game (CC0)\nRendered with FluidR3_GM soundfont by Frank Wen (MIT License)\n\n── 環境音 Ambience ──\nRain against the Window — cori (PDSounds), Public Domain\nRain — ezwa (PDSounds), Public Domain\nOcean Waves on a Tropical Beach — Jarrod Stanley, CC0\nFireplace Sound loop — PagDev (OpenGameArt), CC0\nHowling wind — Tvabutzku1234, CC0\nGentle breeze and birds singing — Wikimedia Commons, Public Domain\n\n感謝所有把作品分享出來的創作者。\nThank you to every artist who shares their work.\n"
 }
