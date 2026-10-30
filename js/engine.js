@@ -95,6 +95,7 @@ class Engine {
       case 'saved_count': return (v.saved || []).length;
       case 'lost_count': return (v.lost || []).length;
       case 'all_leads': return LEADS.slice();
+      case 'known_guides': return GUIDES.filter(x => x === 'noa' ? !!v.guide_noa_unlocked : x === 'arno' ? !!v.arno_met : !!v[x + '_met']); // 她已知道是嚮導的人（與 LOAD_90 選項同條件）
       case 'all_leads_stage4': return (v.eve_lovers || []).length === 11;
       case 'week': return v.day > 0 ? Math.ceil(v.day / 7) : 0;
       case 'weather': return weatherOf(v.day);
@@ -239,6 +240,8 @@ class Engine {
     let red = 12 + 2 * st1 + Math.floor(st2 / 2);
     if (weatherOf(v.day) === 'rain') red -= 4;
     if (v.anchor_refused) red = Math.floor(red / 2);
+    // 第一幕的嚮導藥：身體以為嚮導隨時都在，真正的疏導反而進不深。疏導 6 次後清掉（PILL_CLEAR）。
+    if (v.pill_dependence) { red -= 3; v.pill_dep_n = X.num(v.pill_dep_n) + 1; if (v.pill_dep_n >= 6) { v.pill_dependence = false; v.pill_dep_cleared = true; const qi = this.S.queue.findIndex(q => q.t !== 'scene'); this.S.queue.splice(qi < 0 ? this.S.queue.length : qi, 0, { t: 'scene', id: 'PILL_CLEAR' }); } }
     // 殘響底線：日常疏導降不到底線以下（底線隨幕數上升；緊急疏導／加入場不受限）
     const cur = X.num(v.load); const floor = 5 * Math.max(1, X.num(v.act));
     this.setLoad(Math.max(Math.min(cur, floor), cur - Math.max(0, red)), true);
@@ -329,7 +332,9 @@ class Engine {
     let T = 0; for (const t of [70, 90, 100]) if (prev < t && n >= t) T = t;
     if (!T) return;
     if (T === 100 && !inMain && v.act2_guiding_unlocked) v.overdraw_count = X.num(v.overdraw_count) + 1;
-    if (inMain) return; // 主線自己寫了失控
+    // 第一幕（新團到任前）：主線裡她自己勉強到九十／一百，也一定要有人來拉（EARLY_OVERLOAD）；其餘主線自己寫了失控
+    const early = !v.flag_new_team_arrived && !v.act2_guiding_unlocked;
+    if (inMain && !(early && T >= 90)) return;
     if (v['load_ev_' + T] === v.day) return;
     v['load_ev_' + T] = v.day;
     v.load_pending = Math.max(X.num(v.load_pending), T);
@@ -343,7 +348,7 @@ class Engine {
     if (Math.floor(d / 7) !== X.num(v.orion_wk_id)) { v.orion_wk_id = Math.floor(d / 7); v.orion_week = 0; } // 奧瑞恩：每週最多兩次
     for (const x of LEADS) if (this.met(x) || (x === 'kael' && d >= 1)) { if (SENTINELS.includes(x) && !X.num(v['cstage_' + x])) v['cstage_' + x] = 1; if (v['last_seen_' + x] === undefined) v['last_seen_' + x] = d; }
     if (d >= 2) {
-      let up = v.act2_guiding_unlocked ? (isDayOff(d) ? 2 : 4) + Math.floor(X.num(v.act) / 2) : (isDayOff(d) ? 1 : 3); // 第一幕還沒有固定嚮導：後勤嚮導每週例行梳理，上升較慢
+      let up = v.act2_guiding_unlocked ? (isDayOff(d) ? 2 : 4) + Math.floor(X.num(v.act) / 2) : 1 + (v.pill_dependence ? 1 : 0); // 第一幕：停勤＋加量的抑制劑，每天只漲 1；吃過嚮導藥（pill_dependence）會反彈，每天 2。過載只會來自她自己勉強（推感官的選項）
       up -= Math.min(3, Math.floor(X.num(v.steady) / 10));
       if (LEADS.some(x => X.num(v['gstage_' + x]) >= 6 || X.num(v['cstage_' + x]) >= 6)) up -= 1;
       if (v.pill_day === d) up -= 3;
