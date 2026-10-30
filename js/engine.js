@@ -253,7 +253,7 @@ class Engine {
     if (next >= 5 && load >= 90) return false;
     if (next >= 6 && load >= 70) return false;
     if (next >= 7 && !(v['confessed_' + x] || aff >= 55)) return false;
-    if (next >= 8) return false; // 第 3 批：告白＋雙方同意場
+    if (next >= 8 && !(v['confessed_' + x] && aff >= 60 && load < 70)) return false; // 第 3 批：第 8 階＝告白後、aff≥60、負荷<70
     if (kind === 'g' && x === 'arno') return false;
     if (x === 'kael' && v.kael_romance_lock && next >= 5) return false;
     return true;
@@ -283,14 +283,18 @@ class Engine {
   sentinelPresence() {
     const v = this.S.v; const g1 = v.g1; const load = X.num(v.load);
     const met = SENTINELS.filter(x => this.met(x) || (x === 'kael'));
-    const byAff = (L) => L.sort((p, q) => X.num(v['aff_' + q]) - X.num(v['aff_' + p]))[0] || '';
+    // v2 批3：輪流——好幾天沒來的人優先，再比好感（避免永遠是同一個哨兵）
+    const due = (x) => (v['sent_last_' + x] === undefined || X.num(v.day) - X.num(v['sent_last_' + x]) >= 4) ? 1 : 0;
+    const byAff = (L) => L.sort((p, q) => (due(q) - due(p)) || (X.num(v['aff_' + q]) - X.num(v['aff_' + p])))[0] || '';
     let who = '', mode = '';
     who = byAff(met.filter(x => X.num(v['cstage_' + x]) >= 5 && (v['consent_' + pairKey(g1, x)] || X.num(v['pair_bond_' + pairKey(g1, x)]) >= 18)));
     if (who) mode = 'stay';
+    // v2 批3：留下的人已經連著來了，而另一個哨兵好幾天沒見到她——今天換他在門口等
+    if (who && !due(who)) { const o = byAff(met.filter(x => x !== who && due(x) && X.num(v['aff_' + x]) >= 40 && X.num(v['cstage_' + x]) >= 4)); if (o) { who = o; mode = 'door'; } }
     if (!who && v.mission_partner && v.mission_partner_day === v.day && X.num(v['sload_' + v.mission_partner]) >= 60) { who = v.mission_partner; mode = 'order'; }
-    if (!who) { who = byAff(met.filter(x => X.num(v['aff_' + x]) >= 25 && (load >= 70 || v.fought_day === v.day || v['quarrel_day_' + x] === v.day))); if (who) mode = 'door'; }
+    if (!who) { who = byAff(met.filter(x => X.num(v['aff_' + x]) >= 25 && (load >= 70 || v.fought_day === v.day || v['quarrel_day_' + x] === v.day || (X.num(v['aff_' + x]) >= 40 && X.num(v['cstage_' + x]) >= 4 && due(x))))); if (who) mode = 'door'; }
     v.sent_in = who; v.sent_mode = mode; v.anchor = who;
-    if (who) { this.seenLead(who); this.push('SENT_PRESENCE'); }
+    if (who) { v['sent_last_' + who] = v.day; this.seenLead(who); this.push('SENT_PRESENCE'); }
   }
   contactProgress(x, n) {
     const v = this.S.v; if (!SENTINELS.includes(x)) return;
@@ -492,11 +496,21 @@ class Engine {
       ['cmd', 'date', label, 0],
       ['cmd', 'bg', off ? 'bg_sea_wall_day fx=gray' : 'bg_briefing_room fx=gray', 0],
       ['cmd', '__daylabel', '', 0],
+      ...(this.morningAfter(d) ? [['call', 'MORNING_AFTER']] : []),
       ...(off ? [] : [['call', 'BRIEFING_RANDOM']]),
       ...this.dayCode(d, false),
       ['end']
     ]);
     this.push(sid);
+    return true;
+  }
+  // 第 3 批：第 8 階隔天早上，有人發現。原因輪替、發現的人＝她身邊最在意她的另一位男主
+  morningAfter(d) {
+    const v = this.S.v; const who = v.ma_who;
+    if (!who || X.num(v.ma_day) !== d - 1) { if (who && X.num(v.ma_day) < d - 1) v.ma_who = ''; return false; }
+    const by = LEADS.filter(x => x !== who && this.met(x) && !(x === 'kael' && v.kael_romance_lock))
+      .sort((p, q) => X.num(v['aff_' + q]) - X.num(v['aff_' + p]))[0] || '';
+    v.ma_x = who; v.ma_by = by; v.ma_cause = X.num(v.ma_count) % 6; v.ma_count = X.num(v.ma_count) + 1; v.ma_who = '';
     return true;
   }
   synth(code) { const id = '__s' + (this.S.synthN++); this.S.synth[id] = code; return id; }
