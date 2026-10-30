@@ -34,7 +34,7 @@ const GUIDE_REFS = /\b(g1|g2|guide_g1|guide_g2|anchor|sent_in|guide_pair|guide_t
 const GUIDES = ['rowan', 'cecil', 'elio', 'orion', 'noa', 'arno'];
 const SENTINELS = ['kael', 'ash', 'leo', 'silas', 'vex'];
 const STAGE_T = [0, 0, 8, 15, 22, 30, 40, 55, 60]; // aff needed for stage n (stage 7: ≥55 until confession scenes exist)
-const PURIFY_ID = /^(GUIDE_|GS_|GR_|GX_|GXF_|WATCH_|JOIN_|LOAD_|TEMP_ANCHOR|ANCHOR_|EMERG|SENT_PRESENCE|SHARED_SENSE)/;
+const PURIFY_ID = /^(GUIDE_|GS_|GR_|GX_|GXF_|WX_|WATCH_|JOIN_|LOAD_|TEMP_ANCHOR|ANCHOR_|EMERG|SENT_PRESENCE|SHARED_SENSE)/;
 const LOAD_MAX = 120;
 const PLACE_KEY = { canteen: 'mess', east_seawall: 'sea_wall', old_port_pier: 'old_port_bar', old_port_alley: 'old_port_bar', bar: 'old_port_bar', chapel_yard: 'chapel', research_roof: 'roof' };
 const PLACE_VERB = { mess: '去食堂', training: '去訓練場', roof: '上屋頂', sea_wall: '去海堤走走', archive: '去檔案室', medbay: '去醫療室', wall_top: '上城牆',
@@ -152,6 +152,16 @@ class Engine {
       }
       case 'min_pair_bond': { const L = a[0] || []; let m = Infinity; for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) m = Math.min(m, X.num(v['pair_bond_' + pairKey(L[i], L[j])])); return m === Infinity ? 0 : m; }
       case 'pair_key': return pairKey(a[0], a[1]);
+      case 'yname': { // 這位嚮導現在怎麼叫她（依 addr_<g>_yasi；design/naming.md）
+        const g = String(a[0]); const ad = v['addr_' + g + '_yasi'];
+        if (g === 'rowan') return ad === 'xiaohai' ? '小海' : ad === 'surname' ? '卡菲希爾' : '亞思';
+        if (g === 'cecil') return (ad === 'given' || ad === 'fullname' || ad === 'variable' || v.cecil_calls_name) ? '亞思' : 'A-08';
+        if (g === 'elio') return ad === 'nickname' ? '小思' : (ad === 'given' || ad === 'fullname') ? '亞思' : '卡菲希爾';
+        if (g === 'orion') return ad === 'nickname' ? '夜鶯' : '亞思';
+        if (g === 'noa') return ad === 'nickname_strawberry' ? '草莓' : ad === 'given' ? '亞思' : ad === 'surname' ? '卡菲希爾' : '小姐';
+        if (g === 'arno') return '小思';
+        return '亞思';
+      }
       case 'chance': return Math.random() * 100 < X.num(a[0]);
       case 'name': case 'lover_name': return NAMES[a[0]] !== undefined ? NAMES[a[0]] : String(a[0]);
       case 'max_by': { const L = a[0] || []; const k = a[1] || 'aff'; let best = '', bv = -Infinity; for (const x of L) { const s = X.num(v[k + '_' + x]); if (s > bv) { bv = s; best = x; } } return best; }
@@ -311,9 +321,10 @@ class Engine {
         // 路線事件本身寫了守夜哨兵（AX04：艾許守夜…）→ 今天在場的哨兵就是他，不再另外播 SENT_PRESENCE
         const sl = this.D.scenes[ev.id] && this.D.scenes[ev.id].lead;
         if (sl && SENTINELS.includes(sl) && sl !== v.g1 && sl !== v.g2) { v.sent_in = sl; v.sent_mode = 'stay'; v.sent_shown = true; v['sent_last_' + sl] = v.day; }
-        this.push(ev.id); return;
+        v.wx_pending = ''; this.push(ev.id); return;
       }
     }
+    this.wxPeek();
     const G = g.toUpperCase();
     let id;
     if (fresh) id = this.D.scenes['GS_' + G + '_' + n] ? 'GS_' + G + '_' + n : 'GUIDE_STAGE_GENERIC';
@@ -360,7 +371,49 @@ class Engine {
     const load = X.num(v.load);
     v.join_try = g2 !== 'arno' && g1 !== 'arno' && st2 >= 3 && X.num(v['aff_' + g2]) >= 25 && load >= 50 && load < 90 && Math.random() * 100 < 15 + 5 * (st2 - 3);
     v.join_deep = !!(v.join_try && st1 >= 6 && st2 >= 6);
+    // 2026-10-30：旁觀也是連續劇情。每一組「主導→在場」有自己的 WX_<G1>_<G2>_k 鏈（吃醋→同盟→告白→同意→三人），
+    // 依序播、不重複；鏈用完（或這一階段還沒有能播的）才回到 WATCH_<band> 變體池。路線疏導事件那天仍跳過旁觀（只做加入判定）。
+    if (!v.guide_ev) {
+      if (v.wx_pending === undefined || v.wx_day !== v.day) this.wxPeek();
+      const id = v.wx_pending;
+      if (id && this.D.scenes[id]) {
+        v['wxs_' + id] = true; const k = 'wx_n_' + g1 + '_' + g2; v[k] = X.num(v[k]) + 1; v.wx_cur = id; v.wx_pending = '';
+        v.join_try = false; v.join_deep = false; // 鏈裡的伸手／三人由劇情自己寫
+        this.push(id); return;
+      }
+    }
+    v.wx_cur = '';
     this.push('WATCH_' + v.watch_band.toUpperCase());
+  }
+  wxList(g1, g2) {
+    if (!this._wx) this._wx = {};
+    const key = g1 + '_' + g2;
+    if (!this._wx[key]) {
+      const re = new RegExp('^WX_' + g1.toUpperCase() + '_' + g2.toUpperCase() + '_(\\d+)$');
+      this._wx[key] = Object.entries(this.D.scenes).filter(([id, s]) => re.test(id))
+        .map(([id, s]) => ({ id, k: +id.match(re)[1], gx: s.gx || { min: 0, max: 8, req: '' } })).sort((a, b) => a.k - b.k);
+    }
+    return this._wx[key];
+  }
+  wxPhase(a, b) { // 這一組走到哪：有 PB 場的組合＝pbeat；沒有的（諾亞＋奧瑞恩）看 pair_bond。已同意＝4。
+    const v = this.S.v; const k = pairKey(a, b);
+    if (v['consent_' + k]) return 4;
+    if (this.D.scenes['PB_' + k.toUpperCase() + '_1']) return X.num(v['pbeat_' + k]);
+    const pb = X.num(v['pair_bond_' + k]); return pb >= 20 ? 3 : pb >= 12 ? 2 : pb >= 5 ? 1 : 0;
+  }
+  wxPeek() { // 在 GX 開場前先決定今天的旁觀段（有的話 GX_PAIR 那一行就不播，避免同一個人講兩次）
+    const v = this.S.v; const g1 = v.g1, g2 = v.g2; v.wx_pending = ''; v.wx_day = v.day;
+    if (!g1 || !g2 || g1 === g2) return '';
+    v.wx_ph = this.wxPhase(g1, g2); v.wx_k = pairKey(g1, g2);
+    v.wx_ma = v.ma_x === g2 && X.num(v.ma_day) === X.num(v.day) - 1;
+    const st2 = X.num(v['gstage_' + g2]);
+    for (const e of this.wxList(g1, g2)) {
+      if (v['wxs_' + e.id]) continue;
+      if (st2 < e.gx.min || st2 > e.gx.max) continue;
+      if (e.gx.req && !this.cond(e.gx.req)) continue;
+      v.wx_pending = e.id; return e.id;
+    }
+    return '';
   }
   sentinelPresence() {
     const v = this.S.v;

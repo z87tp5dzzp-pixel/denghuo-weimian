@@ -158,10 +158,7 @@ const FACE_UNLOCK = { silas: 'silas_unlocked', noa: 'noa_unlocked', vex: 'vex_un
 let SPR_VARS = {};
 function spriteUrl(id, outfit, ex) {
   if (/^young|_young/.test(outfit || '')) return null;
-  if (HIDDEN.includes(id) && !SPR_VARS[FACE_UNLOCK[id]]) {
-    const mm = (MAN.sprites_masked || {})[id]; if (!mm) return null;
-    return mm[outfit] || mm.uniform || Object.values(mm)[0] || null;
-  }
+  // 2026-10-30 使用者要求：隱藏人物在劇情中直接顯示立繪，不再用黑影。
   const e = MAN.expr[`${id}_${outfit}_${ex}`]; if (e) return e;
   const m = MAN.sprites[id]; if (!m) return null;
   return m[outfit] || m.uniform || Object.values(m)[0] || null;
