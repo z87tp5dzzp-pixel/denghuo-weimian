@@ -405,7 +405,7 @@ class Engine {
     const v = this.S.v; const g1 = v.g1, g2 = v.g2; v.wx_pending = ''; v.wx_day = v.day;
     if (!g1 || !g2 || g1 === g2) return '';
     v.wx_ph = this.wxPhase(g1, g2); v.wx_k = pairKey(g1, g2);
-    v.wx_ma = v.ma_x === g2 && X.num(v.ma_day) === X.num(v.day) - 1;
+    v.wx_ma = v.ma_x === g2 && X.num(v.ma_day) === X.num(v.day) - 1; v.wx_seek = !!v['seek_' + g2];
     const st2 = X.num(v['gstage_' + g2]);
     for (const e of this.wxList(g1, g2)) {
       if (v['wxs_' + e.id]) continue;

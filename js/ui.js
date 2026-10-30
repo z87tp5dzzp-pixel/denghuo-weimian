@@ -153,7 +153,7 @@ function setBg(id, fx) {
   nxt.style.opacity = 1; els[R.front].style.opacity = 0; R.front = 1 - R.front;
   const r = $('#rain'); r.className = /snow/.test(id) ? 'on snow' : /rain|storm/.test(id) ? 'on' : '';
 }
-// hidden leads: silhouette until their hidden quest triggers (arno: she knows his face from the start)
+// hidden leads: 2026-10-30 起一律直接顯示立繪（不再黑影遮罩）；FACE_UNLOCK 僅保留供其他判斷參考
 const FACE_UNLOCK = { silas: 'silas_unlocked', noa: 'noa_unlocked', vex: 'vex_unlocked', arno: 'arno_met' };
 let SPR_VARS = {};
 function spriteUrl(id, outfit, ex) {
