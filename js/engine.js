@@ -26,6 +26,9 @@ const LOC_NAME = { medbay: '醫療室', outside_wall: '牆外', old_port_bar: '�
   rift_edge: '裂隙邊緣', bar: '酒館', chapel_yard: '禮拜堂中庭', lighthouse: '燈塔', east_seawall: '東海堤' };
 const NOON_T = ['predawn', 'dawn', 'morning', 'noon', 'dusk'];
 const NIGHT_T = ['evening', 'night', 'late_night'];
+const ZHD = '零一二三四五六七八九';
+function zhNum(x) { let n = Math.max(0, Math.round(X.num(x))); if (n >= 100) return n === 100 ? '一百' : String(n); if (n < 10) return ZHD[n]; const t = Math.floor(n / 10), u = n % 10; return (t === 1 ? '' : ZHD[t]) + '十' + (u ? ZHD[u] : ''); }
+const GUIDE_AFTER = new Set(['R08']); // 疏導結束後才發生的組合事件（排在當晚之後）
 const GUIDE_REFS = /\b(g1|g2|guide_g1|guide_g2|anchor|sent_in|guide_pair|guide_tag|guide_mode|__gi)\b/;
 // ---- v2 systems (REWRITE_PLAN §4) ----
 const GUIDES = ['rowan', 'cecil', 'elio', 'orion', 'noa', 'arno'];
@@ -138,6 +141,11 @@ class Engine {
         v[key] = r; return r;
       }
       case 'has_event': return !!this.pickEventByTag(String(a[0]));
+      case 'zh': return zhNum(a[0]);
+      case 'load_after': { // 這場疏導結束後的負荷（與 guideEffects 同一套算法），給事件文字用
+        const cur = X.num(v.load); const floor = 5 * Math.max(1, X.num(v.act));
+        return Math.max(Math.min(cur, floor), cur - Math.max(0, this.guideRed()));
+      }
       case 'min_pair_bond': { const L = a[0] || []; let m = Infinity; for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) m = Math.min(m, X.num(v['pair_bond_' + pairKey(L[i], L[j])])); return m === Infinity ? 0 : m; }
       case 'pair_key': return pairKey(a[0], a[1]);
       case 'chance': return Math.random() * 100 < X.num(a[0]);
@@ -227,11 +235,11 @@ class Engine {
     const v = this.S.v; const g1 = v.g1, g2 = v.g2; const k = pairKey(g1, g2);
     // guide-context route events (g1/g2/anchor based), evaluated with pre-guiding load
     // v2 批4：v2 疏導沒有設 guide_pair → 舊的組合事件從來不會觸發。兩種順序都試。
-    const gpick = () => this.pickEvent(e => e.s.whenx && GUIDE_REFS.test(e.s.whenx) && !/window ==/.test(e.s.whenx), {});
-    v.guide_pair = g1 + '_' + g2; let ev = gpick();
-    if (!ev) { v.guide_pair = g2 + '_' + g1; ev = gpick(); }
-    if (!ev) v.guide_pair = g1 + '_' + g2;
-    if (ev) this.S.queue.unshift({ t: 'scene', id: ev.id });
+    // 2026-10-30：疏導情境的路線事件改在 guideStage 裡「取代」當天的 GX（不再排到深夜變成第二場疏導）。
+    // 這裡只排「疏導結束後」的事件（GUIDE_AFTER，例：半夜廚房），而且只看主導＋在場的實際順序。
+    v.guide_pair = g1 + '_' + g2;
+    const aft = this.pickEvent(e => GUIDE_AFTER.has(e.id) && e.s.whenx && !/window ==/.test(e.s.whenx), {});
+    if (aft) this.S.queue.unshift({ t: 'scene', id: aft.id });
     const st1 = X.num(v['gstage_' + g1]), st2 = X.num(v['gstage_' + g2]);
     const fresh = !!v.gs_new;
     let a1 = fresh ? 3 : 2; const b1 = fresh ? 2 : 1;
@@ -242,11 +250,9 @@ class Engine {
     if (g2 === 'arno' && v.arno_truth) v.bond_arno = Math.min(100, X.num(v.bond_arno) + 1); // 家人疏導：在場也算陪伴
     v['pair_bond_' + k] = X.num(v['pair_bond_' + k]) + 1;
     v['pair_sync_' + k] = X.num(v['pair_sync_' + k]) + 3;
-    let red = 12 + 2 * st1 + Math.floor(st2 / 2);
-    if (weatherOf(v.day) === 'rain') red -= 4;
-    if (v.anchor_refused) red = Math.floor(red / 2);
+    let red = this.guideRed();
     // 第一幕的嚮導藥：身體以為嚮導隨時都在，真正的疏導反而進不深。疏導 6 次後清掉（PILL_CLEAR）。
-    if (v.pill_dependence) { red -= 3; v.pill_dep_n = X.num(v.pill_dep_n) + 1; if (v.pill_dep_n >= 6) { v.pill_dependence = false; v.pill_dep_cleared = true; const qi = this.S.queue.findIndex(q => q.t !== 'scene'); this.S.queue.splice(qi < 0 ? this.S.queue.length : qi, 0, { t: 'scene', id: 'PILL_CLEAR' }); } }
+    if (v.pill_dependence) { v.pill_dep_n = X.num(v.pill_dep_n) + 1; if (v.pill_dep_n >= 6) { v.pill_dependence = false; v.pill_dep_cleared = true; const qi = this.S.queue.findIndex(q => q.t !== 'scene'); this.S.queue.splice(qi < 0 ? this.S.queue.length : qi, 0, { t: 'scene', id: 'PILL_CLEAR' }); } }
     // 殘響底線：日常疏導降不到底線以下（底線隨幕數上升；緊急疏導／加入場不受限）
     const cur = X.num(v.load); const floor = 5 * Math.max(1, X.num(v.act));
     this.setLoad(Math.max(Math.min(cur, floor), cur - Math.max(0, red)), true);
@@ -256,6 +262,14 @@ class Engine {
     if (this.getVar('week') === 3 && (g1 === 'cecil' || g2 === 'cecil')) v.cecil_in_guide_w3 = true;
     if (v.seen_K10a && v.sent_in === 'kael') v.anchor_count_kael_after_K10a = X.num(v.anchor_count_kael_after_K10a) + 1;
     if (v.kael_romance_lock && X.num(v.aff_kael) > 19) v.aff_kael = 19;
+  }
+  guideRed() {
+    const v = this.S.v; const st1 = X.num(v['gstage_' + v.g1]), st2 = X.num(v['gstage_' + v.g2]);
+    let red = 12 + 2 * st1 + Math.floor(st2 / 2);
+    if (weatherOf(v.day) === 'rain') red -= 4;
+    if (v.anchor_refused) red = Math.floor(red / 2);
+    if (v.pill_dependence) red -= 3;
+    return red;
   }
   // ---------- v2: stages, presence, load, neglect ----------
   stageCan(x, next, kind) {
@@ -277,7 +291,22 @@ class Engine {
     if (cur >= 1 && X.num(v['gprog_' + g]) >= 3 && this.stageCan(g, cur + 1, 'g')) { n = cur + 1; fresh = true; v['gstage_' + g] = n; v['gprog_' + g] = 0; }
     if (!n) { n = 1; fresh = true; v['gstage_' + g] = 1; v['gprog_' + g] = 0; }
     v.gs_n = n; v.gs_new = fresh; v.gs_band = n >= 5 ? 'high' : n >= 3 ? 'mid' : 'low';
+    v.guide_ev = '';
     if (quiet && !fresh) return;
+    if (!fresh) {
+      // 路線的疏導事件（RX/EX/AX…）＝這一場疏導本身：取代 GX，不另外加一場。只用實際的主導_在場順序判定。
+      if (!v.sent_pre) this.sentinelPick();
+      v.guide_pair = v.g1 + '_' + v.g2;
+      const ev = this.pickEvent(e => e.s.whenx && GUIDE_REFS.test(e.s.whenx) && !GUIDE_AFTER.has(e.id) && !/window ==|guide_tag ==|guide_mode ==/.test(e.s.whenx), {});
+      if (ev) {
+        v.guide_ev = ev.id; v.pair_event_played = true;
+        if (/sent_in/.test(ev.s.whenx)) v.sent_shown = true;
+        // 路線事件本身寫了守夜哨兵（AX04：艾許守夜…）→ 今天在場的哨兵就是他，不再另外播 SENT_PRESENCE
+        const sl = this.D.scenes[ev.id] && this.D.scenes[ev.id].lead;
+        if (sl && SENTINELS.includes(sl) && sl !== v.g1 && sl !== v.g2) { v.sent_in = sl; v.sent_mode = 'stay'; v.sent_shown = true; v['sent_last_' + sl] = v.day; }
+        this.push(ev.id); return;
+      }
+    }
     const G = g.toUpperCase();
     let id;
     if (fresh) id = this.D.scenes['GS_' + G + '_' + n] ? 'GS_' + G + '_' + n : 'GUIDE_STAGE_GENERIC';
@@ -327,7 +356,14 @@ class Engine {
     this.push('WATCH_' + v.watch_band.toUpperCase());
   }
   sentinelPresence() {
-    const v = this.S.v; const g1 = v.g1; const load = X.num(v.load);
+    const v = this.S.v;
+    if (!v.sent_pre) this.sentinelPick();
+    const who = v.sent_in; v.sent_pre = false;
+    if (who && !v.sent_shown) this.push('SENT_PRESENCE');
+    v.sent_shown = false;
+  }
+  sentinelPick() {
+    const v = this.S.v; const g1 = v.g1; const load = X.num(v.load); v.sent_pre = true;
     const met = SENTINELS.filter(x => this.met(x) || (x === 'kael'));
     // v2 批3：輪流——好幾天沒來的人優先，再比好感（避免永遠是同一個哨兵）
     const due = (x) => (v['sent_last_' + x] === undefined || X.num(v.day) - X.num(v['sent_last_' + x]) >= 4) ? 1 : 0;
@@ -340,7 +376,7 @@ class Engine {
     if (!who && v.mission_partner && v.mission_partner_day === v.day && X.num(v['sload_' + v.mission_partner]) >= 60) { who = v.mission_partner; mode = 'order'; }
     if (!who) { who = byAff(met.filter(x => X.num(v['aff_' + x]) >= 25 && (load >= 70 || v.fought_day === v.day || v['quarrel_day_' + x] === v.day || (X.num(v['aff_' + x]) >= 40 && X.num(v['cstage_' + x]) >= 4 && due(x))))); if (who) mode = 'door'; }
     v.sent_in = who; v.sent_mode = mode; // v2 批4：哨兵只能在場／守門，不能當錨（anchor 只給嚮導）
-    if (who) { v['sent_last_' + who] = v.day; this.seenLead(who); this.push('SENT_PRESENCE'); }
+    if (who) { v['sent_last_' + who] = v.day; this.seenLead(who); }
   }
   contactProgress(x, n) {
     const v = this.S.v; if (!SENTINELS.includes(x)) return;
