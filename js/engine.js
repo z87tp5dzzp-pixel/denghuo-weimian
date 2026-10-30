@@ -31,7 +31,7 @@ const GUIDE_REFS = /\b(g1|g2|guide_g1|guide_g2|anchor|sent_in|guide_pair|guide_t
 const GUIDES = ['rowan', 'cecil', 'elio', 'orion', 'noa', 'arno'];
 const SENTINELS = ['kael', 'ash', 'leo', 'silas', 'vex'];
 const STAGE_T = [0, 0, 8, 15, 22, 30, 40, 55, 60]; // aff needed for stage n (stage 7: ≥55 until confession scenes exist)
-const PURIFY_ID = /^(GUIDE_|GS_|GR_|WATCH_|JOIN_|LOAD_|TEMP_ANCHOR|ANCHOR_|EMERG|SENT_PRESENCE|SHARED_SENSE)/;
+const PURIFY_ID = /^(GUIDE_|GS_|GR_|GX_|GXF_|WATCH_|JOIN_|LOAD_|TEMP_ANCHOR|ANCHOR_|EMERG|SENT_PRESENCE|SHARED_SENSE)/;
 const LOAD_MAX = 120;
 const PLACE_KEY = { canteen: 'mess', east_seawall: 'sea_wall', old_port_pier: 'old_port_bar', old_port_alley: 'old_port_bar', bar: 'old_port_bar', chapel_yard: 'chapel', research_roof: 'roof' };
 const PLACE_VERB = { mess: '去食堂', training: '去訓練場', roof: '上屋頂', sea_wall: '去海堤走走', archive: '去檔案室', medbay: '去醫療室', wall_top: '上城牆',
@@ -132,6 +132,11 @@ class Engine {
       case 'upper': return String(a[0] || '').toUpperCase();
       case 'lower': return String(a[0] || '').toLowerCase();
       case 'has_scene': return !!this.D.scenes[String(a[0])];
+      case 'gxpick': { // 情境池：從 n 句裡挑一句，不與上一次同一句（同池不連續重複）
+        const key = 'gxp_' + String(a[0]); const nn = Math.max(1, X.num(a[1])); const last = v[key];
+        let r = Math.floor(Math.random() * nn); if (nn > 1 && r === last) r = (r + 1 + Math.floor(Math.random() * (nn - 1))) % nn;
+        v[key] = r; return r;
+      }
       case 'has_event': return !!this.pickEventByTag(String(a[0]));
       case 'min_pair_bond': { const L = a[0] || []; let m = Infinity; for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) m = Math.min(m, X.num(v['pair_bond_' + pairKey(L[i], L[j])])); return m === Infinity ? 0 : m; }
       case 'pair_key': return pairKey(a[0], a[1]);
@@ -274,9 +279,43 @@ class Engine {
     v.gs_n = n; v.gs_new = fresh; v.gs_band = n >= 5 ? 'high' : n >= 3 ? 'mid' : 'low';
     if (quiet && !fresh) return;
     const G = g.toUpperCase();
-    const id = fresh ? (this.D.scenes['GS_' + G + '_' + n] ? 'GS_' + G + '_' + n : 'GUIDE_STAGE_GENERIC')
-      : (this.D.scenes['GR_' + G + '_' + v.gs_band] ? 'GR_' + G + '_' + v.gs_band : 'GUIDE_STAGE_GENERIC');
+    let id;
+    if (fresh) id = this.D.scenes['GS_' + G + '_' + n] ? 'GS_' + G + '_' + n : 'GUIDE_STAGE_GENERIC';
+    else {
+      // GX：每次疏導都是新的一段（同一位嚮導的連續劇情）；用完後改走 GXF_ 情境組合池
+      // 情境層（GX_OPEN 讀）：距上次由他主疏導幾天、隔天早上、被冷落、巡邏日、輪替序號
+      v.gx_gap = v['gx_lastday_' + g] === undefined ? 0 : X.num(v.day) - X.num(v['gx_lastday_' + g]); v['gx_lastday_' + g] = v.day;
+      v.gx_ma = v.ma_x === g && X.num(v.ma_day) === X.num(v.day) - 1;
+      v.gx_mab = !v.gx_ma && v.ma_by === g && X.num(v.ma_day) === X.num(v.day) - 1;
+      v.gx_seek = !!v['seek_' + g];
+      v.gx_patrol = X.num(v.patrol_day) === X.num(v.day) && X.num(v.day) > 0;
+      v.gx_k = X.num(v['gx_n_' + g]) % 3; v.gx_odd = X.num(v['gx_n_' + g]) % 2;
+      id = this.gxNext(g, n);
+      if (!id) id = this.D.scenes['GXF_' + G] ? 'GXF_' + G : this.D.scenes['GR_' + G + '_' + v.gs_band] ? 'GR_' + G + '_' + v.gs_band : 'GUIDE_STAGE_GENERIC';
+      v.gx_tick = X.num(v.gx_tick) + 1; v.gx_cur = id; v['gx_last_' + g] = id;
+      v['gx_n_' + g] = X.num(v['gx_n_' + g]) + 1;
+    }
     this.push(id);
+  }
+  gxList(g) {
+    if (!this._gx) this._gx = {};
+    if (!this._gx[g]) {
+      const re = new RegExp('^GX_' + g.toUpperCase() + '_(\\d+)$');
+      this._gx[g] = Object.entries(this.D.scenes).filter(([id, s]) => s.gx && re.test(id))
+        .map(([id, s]) => ({ id, k: +id.match(re)[1], gx: s.gx })).sort((a, b) => a.k - b.k);
+    }
+    return this._gx[g];
+  }
+  gxNext(g, n) {
+    const v = this.S.v;
+    for (const e of this.gxList(g)) {
+      if (v['gxs_' + e.id]) continue;
+      if (n < e.gx.min || n > e.gx.max) continue;
+      if (e.gx.req && !this.cond(e.gx.req)) continue;
+      v['gxs_' + e.id] = true; v['gx_' + g] = X.num(v['gx_' + g]) + 1;
+      return e.id;
+    }
+    return null;
   }
   guideWatch() {
     const v = this.S.v; const g1 = v.g1, g2 = v.g2;
@@ -380,6 +419,7 @@ class Engine {
     const code = [];
     if (v.neglect_who) { const id = 'NEGLECT_' + v.neglect_who.toUpperCase() + '_' + v.neglect_tier; code.push(['call', this.D.scenes[id] ? id : 'NEGLECT_GENERIC']); }
     code.push(['call', 'LOAD_CHECK']);
+    if (patrol && !rest) v.patrol_day = d;
     if (patrol && !rest) code.push(['call', 'PATROL']); else code.push(['cmd', 'freetime', off ? 'day_off' : 'noon', 0]);
     code.push(['call', 'LOAD_CHECK']);
     if (guides && !off) code.push(['call', 'GUIDE_DAILY']);
