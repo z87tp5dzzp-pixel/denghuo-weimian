@@ -395,10 +395,11 @@ class Engine {
     }
     return this._wx[key];
   }
-  wxPhase(a, b) { // 這一組走到哪：有 PB 場的組合＝pbeat；沒有的（諾亞＋奧瑞恩）看 pair_bond。已同意＝4。
+  wxPhase(a, b) { // 這一組走到哪：有 PB 場的組合＝pbeat；沒有的（諾亞＋奧瑞恩）已同意＝4，否則看 pair_bond。
     const v = this.S.v; const k = pairKey(a, b);
-    if (v['consent_' + k]) return 4;
+    // 有 PB 場的組合只看 pbeat（同意若來自 JOIN_DEEP 而 PB 還沒播，旁觀段不能先引用 PB 的內容）
     if (this.D.scenes['PB_' + k.toUpperCase() + '_1']) return X.num(v['pbeat_' + k]);
+    if (v['consent_' + k]) return 4;
     const pb = X.num(v['pair_bond_' + k]); return pb >= 20 ? 3 : pb >= 12 ? 2 : pb >= 5 ? 1 : 0;
   }
   wxPeek() { // 在 GX 開場前先決定今天的旁觀段（有的話 GX_PAIR 那一行就不播，避免同一個人講兩次）
