@@ -26,7 +26,7 @@ const LOC_NAME = { medbay: '醫療室', outside_wall: '牆外', old_port_bar: '�
   rift_edge: '裂隙邊緣', bar: '酒館', chapel_yard: '禮拜堂中庭', lighthouse: '燈塔', east_seawall: '東海堤' };
 const NOON_T = ['predawn', 'dawn', 'morning', 'noon', 'dusk'];
 const NIGHT_T = ['evening', 'night', 'late_night'];
-const GUIDE_REFS = /\b(g1|g2|guide_g1|guide_g2|anchor|guide_pair|guide_tag|guide_mode|__gi)\b/;
+const GUIDE_REFS = /\b(g1|g2|guide_g1|guide_g2|anchor|sent_in|guide_pair|guide_tag|guide_mode|__gi)\b/;
 // ---- v2 systems (REWRITE_PLAN §4) ----
 const GUIDES = ['rowan', 'cecil', 'elio', 'orion', 'noa', 'arno'];
 const SENTINELS = ['kael', 'ash', 'leo', 'silas', 'vex'];
@@ -220,7 +220,11 @@ class Engine {
   guideEffects() {
     const v = this.S.v; const g1 = v.g1, g2 = v.g2; const k = pairKey(g1, g2);
     // guide-context route events (g1/g2/anchor based), evaluated with pre-guiding load
-    const ev = this.pickEvent(e => e.s.whenx && GUIDE_REFS.test(e.s.whenx) && !/window ==/.test(e.s.whenx), {});
+    // v2 批4：v2 疏導沒有設 guide_pair → 舊的組合事件從來不會觸發。兩種順序都試。
+    const gpick = () => this.pickEvent(e => e.s.whenx && GUIDE_REFS.test(e.s.whenx) && !/window ==/.test(e.s.whenx), {});
+    v.guide_pair = g1 + '_' + g2; let ev = gpick();
+    if (!ev) { v.guide_pair = g2 + '_' + g1; ev = gpick(); }
+    if (!ev) v.guide_pair = g1 + '_' + g2;
     if (ev) this.S.queue.unshift({ t: 'scene', id: ev.id });
     const st1 = X.num(v['gstage_' + g1]), st2 = X.num(v['gstage_' + g2]);
     const fresh = !!v.gs_new;
@@ -242,7 +246,7 @@ class Engine {
     v.guided_day = v.day;
     if (g1 === 'rowan') v.rowan_lead_count = X.num(v.rowan_lead_count) + 1;
     if (this.getVar('week') === 3 && (g1 === 'cecil' || g2 === 'cecil')) v.cecil_in_guide_w3 = true;
-    if (v.seen_K10a && v.anchor === 'kael') v.anchor_count_kael_after_K10a = X.num(v.anchor_count_kael_after_K10a) + 1;
+    if (v.seen_K10a && v.sent_in === 'kael') v.anchor_count_kael_after_K10a = X.num(v.anchor_count_kael_after_K10a) + 1;
     if (v.kael_romance_lock && X.num(v.aff_kael) > 19) v.aff_kael = 19;
   }
   // ---------- v2: stages, presence, load, neglect ----------
@@ -293,7 +297,7 @@ class Engine {
     if (who && !due(who)) { const o = byAff(met.filter(x => x !== who && due(x) && X.num(v['aff_' + x]) >= 40 && X.num(v['cstage_' + x]) >= 4)); if (o) { who = o; mode = 'door'; } }
     if (!who && v.mission_partner && v.mission_partner_day === v.day && X.num(v['sload_' + v.mission_partner]) >= 60) { who = v.mission_partner; mode = 'order'; }
     if (!who) { who = byAff(met.filter(x => X.num(v['aff_' + x]) >= 25 && (load >= 70 || v.fought_day === v.day || v['quarrel_day_' + x] === v.day || (X.num(v['aff_' + x]) >= 40 && X.num(v['cstage_' + x]) >= 4 && due(x))))); if (who) mode = 'door'; }
-    v.sent_in = who; v.sent_mode = mode; v.anchor = who;
+    v.sent_in = who; v.sent_mode = mode; // v2 批4：哨兵只能在場／守門，不能當錨（anchor 只給嚮導）
     if (who) { v['sent_last_' + who] = v.day; this.seenLead(who); this.push('SENT_PRESENCE'); }
   }
   contactProgress(x, n) {
@@ -563,11 +567,13 @@ class Engine {
       // R0 jumps over R1/R2 bodies by explicit gotos
       if (nc) o0.push(opt('……所有人。', [['call', nc.id]], 'END'));
       if (et) o0.push(opt('……大家。', [['call', et.id]], 'END'));
-      for (const e of solo) o0.push(opt(this.optLabel(e), [['call', e.id]], 'R1', 'not seen_' + e.id));
+      const qn = list.find(e => e.id === 'quad_night');
+      if (qn) o0.push(opt('去疏導室，找他們三個', [['call', qn.id]], 'END'));
+      for (const e of solo) if (e.id !== 'quad_night') o0.push(opt(this.optLabel(e), [['call', e.id]], 'R1', 'not seen_' + e.id));
       o0.push(opt(o0.length ? '（今晚，一個人點燈。）' : '（點燈。）', [['cmd', '__fallback', '1', 0]], 'END'));
-      for (const e of solo) o1.push(opt(this.optLabel(e), [['call', e.id]], 'R2', 'not seen_' + e.id));
+      for (const e of solo.filter(x => x.id !== 'quad_night')) o1.push(opt(this.optLabel(e), [['call', e.id]], 'R2', 'not seen_' + e.id));
       o1.push(opt('（……夠了。今晚到這裡。）', [], 'END'));
-      for (const e of solo) o2.push(opt(this.optLabel(e), [['call', e.id]], 'END', 'not seen_' + e.id));
+      for (const e of solo.filter(x => x.id !== 'quad_night')) o2.push(opt(this.optLabel(e), [['call', e.id]], 'END', 'not seen_' + e.id));
       o2.push(opt('（……夠了。今晚到這裡。）', [], 'END'));
       labels.END = code.length; code.push(['end']);
       // R0 -> R1 -> R2 are sequential instructions; make each choice's natural fallthrough go to END
