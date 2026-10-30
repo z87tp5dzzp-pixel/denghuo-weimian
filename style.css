@@ -49,6 +49,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 #colorbar i { width: 22px; height: 6px; border-radius: 3px; box-shadow: 0 0 8px currentColor; }
 .gauge { display: none; align-items: center; gap: 10px; font-size: 17px; color: var(--gold-hi); }
 .gauge.on { display: flex; }
+.gauge b { font-weight: normal; min-width: 4.2em; font-variant-numeric: tabular-nums; }
+.gauge b.up { color: #e07a5f; } .gauge b.down { color: #8fc1a9; }
+#g-load.b1 i { border-color: rgba(220,190,90,.8); } #g-load.b2 i { border-color: #d9903d; } #g-load.b3 i { border-color: #d0603a; } #g-load.b4 i { border-color: #c03030; box-shadow: 0 0 6px #c03030; }
+#g-load.b2 i, #g-load.b3 i, #g-load.b4 i { background: linear-gradient(90deg, #c8743a var(--v, 0%), rgba(0,0,0,.4) var(--v, 0%)); }
 .gauge i { display: block; width: 160px; height: 8px; border: 1px solid rgba(201,162,74,.6); border-radius: 4px; background: linear-gradient(90deg, var(--gold) var(--v, 0%), rgba(0,0,0,.4) var(--v, 0%)); }
 #g-loc i { background: linear-gradient(90deg, #b2483d var(--v, 0%), rgba(0,0,0,.4) var(--v, 0%)); }
 #datechip { position: absolute; right: 12px; top: 10px; padding: 7px 16px; background: rgba(0,0,0,.4); font-size: 20px; letter-spacing: .08em; color: #f0ead8; }

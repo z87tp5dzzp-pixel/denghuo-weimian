@@ -27,6 +27,19 @@ const LOC_NAME = { medbay: '醫療室', outside_wall: '牆外', old_port_bar: '�
 const NOON_T = ['predawn', 'dawn', 'morning', 'noon', 'dusk'];
 const NIGHT_T = ['evening', 'night', 'late_night'];
 const GUIDE_REFS = /\b(g1|g2|guide_g1|guide_g2|anchor|guide_pair|guide_tag|guide_mode|__gi)\b/;
+// ---- v2 systems (REWRITE_PLAN §4) ----
+const GUIDES = ['rowan', 'cecil', 'elio', 'orion', 'noa', 'arno'];
+const SENTINELS = ['kael', 'ash', 'leo', 'silas', 'vex'];
+const STAGE_T = [0, 0, 8, 15, 22, 30, 40, 55, 60]; // aff needed for stage n (stage 7: ≥55 until confession scenes exist)
+const PURIFY_ID = /^(GUIDE_|GS_|GR_|WATCH_|JOIN_|LOAD_|TEMP_ANCHOR|ANCHOR_|EMERG|SENT_PRESENCE|SHARED_SENSE)/;
+const LOAD_MAX = 120;
+const PLACE_KEY = { canteen: 'mess', east_seawall: 'sea_wall', old_port_pier: 'old_port_bar', old_port_alley: 'old_port_bar', bar: 'old_port_bar', chapel_yard: 'chapel', research_roof: 'roof' };
+const PLACE_VERB = { mess: '去食堂', training: '去訓練場', roof: '上屋頂', sea_wall: '去海堤走走', archive: '去檔案室', medbay: '去醫療室', wall_top: '上城牆',
+  chapel: '去禮拜堂', tower: '去嚮導塔', old_port_bar: '去舊港', kitchen: '去廚房', dorm: '回宿舍待著', guide_room_corridor: '去疏導室那一層', hq_corridor: '在總部裡走走',
+  hq_locker: '去更衣室', research: '去研究所', research_dorm: '去研究所宿舍', outside_wall: '出牆外', north_city: '去北城', shallows: '去淺灘', cemetery: '去墓地',
+  lab: '去實驗室', lighthouse: '去燈塔', rift_edge: '去裂隙邊緣', facility_ruin: '去設施廢墟', detention: '去拘留室', roam: '隨便走走' };
+const LEAD_HOME = { kael: 'training', rowan: 'mess', cecil: 'tower', elio: 'medbay', orion: 'archive', ash: 'wall_top', leo: 'training', silas: 'chapel', noa: 'old_port_bar', vex: 'roof', arno: 'sea_wall' };
+const PLACE_POOL = ['mess', 'training', 'roof', 'sea_wall', 'archive', 'medbay', 'wall_top', 'tower', 'chapel', 'old_port_bar'];
 
 function weatherOf(d) {
   if (d === 3) return 'rain';
@@ -54,6 +67,11 @@ class Engine {
     this.mainIndex = {}; data.order.forEach((id, i) => { this.mainIndex[id] = i; });
     this.events = Object.entries(data.scenes).filter(([id, s]) => (s.when || s.slot) && !(id in this.mainIndex)).map(([id, s]) => ({ id, s }));
     this.errors = [];
+    this.purify = new Set();
+    for (const [id, sc] of Object.entries(data.scenes)) {
+      if (PURIFY_ID.test(id) || (sc.whenx && GUIDE_REFS.test(sc.whenx)) || /疏導|淨化/.test(sc.title || '')) this.purify.add(id);
+      else if (id in this.mainIndex && /疏導/.test(JSON.stringify(sc.code))) this.purify.add(id);
+    }
     this.ctx = { scopes: [], get: (n) => this.getVar(n), fn: (f, a) => this.callFn(f, a), isId: (n) => this.isId(n) };
     this.S = null;
   }
@@ -180,6 +198,11 @@ class Engine {
   afterScene(sid, top) {
     const v = this.S.v;
     if (sid === 'GUIDE_DAILY' && v.g1 && v.g2) this.guideEffects();
+    const sc = this.D.scenes[sid];
+    if (sc && sc.lead && !(sid in this.mainIndex) && LEADS.includes(sc.lead)) {
+      this.seenLead(sc.lead);
+      if (SENTINELS.includes(sc.lead) && !this.purify.has(sid) && !/^(NEGLECT_|CONTACT_|PATROL|PLACE_)/.test(sid)) this.contactProgress(sc.lead, 1);
+    }
     // (2026-10-26) Engine bond stopgap removed: script milestones supply bond_X (FORMAT §H).
     if (sid === 'EVE_TOGETHER') {
       const L = v.eve_lovers || []; const b = X.num(v.eve_pair_bonus) || 3;
@@ -194,17 +217,160 @@ class Engine {
   }
   guideEffects() {
     const v = this.S.v; const g1 = v.g1, g2 = v.g2; const k = pairKey(g1, g2);
-    const sync = X.num(v['pair_sync_' + k]);
     // guide-context route events (g1/g2/anchor based), evaluated with pre-guiding load
     const ev = this.pickEvent(e => e.s.whenx && GUIDE_REFS.test(e.s.whenx) && !/window ==/.test(e.s.whenx), {});
     if (ev) this.S.queue.unshift({ t: 'scene', id: ev.id });
-    v.load = Math.max(0, X.num(v.load) - (15 + Math.floor(sync / 5)));
-    v['aff_' + g1] = Math.min(100, X.num(v['aff_' + g1]) + 1); v['aff_' + g2] = Math.min(100, X.num(v['aff_' + g2]) + 1);
+    const st1 = X.num(v['gstage_' + g1]), st2 = X.num(v['gstage_' + g2]);
+    const fresh = !!v.gs_new;
+    let a1 = fresh ? 3 : 2; const b1 = fresh ? 2 : 1;
+    if (g1 === 'cecil' && st1 < 3) a1 -= 1; // 塞西爾：負面起點，第 3 階前增益減半
+    v['aff_' + g1] = Math.min(100, X.num(v['aff_' + g1]) + a1);
+    v['bond_' + g1] = Math.min(100, X.num(v['bond_' + g1]) + b1);
+    if (st2 >= 3) v['aff_' + g2] = Math.min(100, X.num(v['aff_' + g2]) + 1); else v['jealousy_' + g2] = X.num(v['jealousy_' + g2]) + 1;
     v['pair_bond_' + k] = X.num(v['pair_bond_' + k]) + 1;
-    v['pair_sync_' + k] = sync + 3;
+    v['pair_sync_' + k] = X.num(v['pair_sync_' + k]) + 3;
+    let red = 12 + 2 * st1 + Math.floor(st2 / 2);
+    if (weatherOf(v.day) === 'rain') red -= 4;
+    if (v.anchor_refused) red = Math.floor(red / 2);
+    // 殘響底線：日常疏導降不到底線以下（底線隨幕數上升；緊急疏導／加入場不受限）
+    const cur = X.num(v.load); const floor = 5 * Math.max(1, X.num(v.act));
+    this.setLoad(Math.max(Math.min(cur, floor), cur - Math.max(0, red)), true);
+    v['last_lead_' + g1] = v.day; this.seenLead(g1); this.seenLead(g2);
+    v.guided_day = v.day;
     if (g1 === 'rowan') v.rowan_lead_count = X.num(v.rowan_lead_count) + 1;
     if (this.getVar('week') === 3 && (g1 === 'cecil' || g2 === 'cecil')) v.cecil_in_guide_w3 = true;
     if (v.seen_K10a && v.anchor === 'kael') v.anchor_count_kael_after_K10a = X.num(v.anchor_count_kael_after_K10a) + 1;
+    if (v.kael_romance_lock && X.num(v.aff_kael) > 19) v.aff_kael = 19;
+  }
+  // ---------- v2: stages, presence, load, neglect ----------
+  stageCan(x, next, kind) {
+    const v = this.S.v; if (next > 8) return false;
+    const aff = X.num(v['aff_' + x]); const load = X.num(v.load);
+    if (next > 1 && aff < STAGE_T[next]) return false;
+    if (next >= 5 && load >= 90) return false;
+    if (next >= 6 && load >= 70) return false;
+    if (next >= 7 && !(v['confessed_' + x] || aff >= 55)) return false;
+    if (next >= 8) return false; // 第 3 批：告白＋雙方同意場
+    if (kind === 'g' && x === 'arno') return false;
+    if (x === 'kael' && v.kael_romance_lock && next >= 5) return false;
+    return true;
+  }
+  guideStage(quiet) {
+    const v = this.S.v; const g = v.g1; const cur = X.num(v['gstage_' + g]);
+    let n = cur, fresh = false;
+    v['gprog_' + g] = X.num(v['gprog_' + g]) + 1;
+    if (cur >= 1 && X.num(v['gprog_' + g]) >= 3 && this.stageCan(g, cur + 1, 'g')) { n = cur + 1; fresh = true; v['gstage_' + g] = n; v['gprog_' + g] = 0; }
+    if (!n) { n = 1; fresh = true; v['gstage_' + g] = 1; v['gprog_' + g] = 0; }
+    v.gs_n = n; v.gs_new = fresh; v.gs_band = n >= 5 ? 'high' : n >= 3 ? 'mid' : 'low';
+    if (quiet && !fresh) return;
+    const G = g.toUpperCase();
+    const id = fresh ? (this.D.scenes['GS_' + G + '_' + n] ? 'GS_' + G + '_' + n : 'GUIDE_STAGE_GENERIC')
+      : (this.D.scenes['GR_' + G + '_' + v.gs_band] ? 'GR_' + G + '_' + v.gs_band : 'GUIDE_STAGE_GENERIC');
+    this.push(id);
+  }
+  guideWatch() {
+    const v = this.S.v; const g1 = v.g1, g2 = v.g2;
+    const st1 = X.num(v['gstage_' + g1]), st2 = X.num(v['gstage_' + g2]);
+    v.watch_band = st2 >= 6 ? 'deep' : st2 >= 3 ? 'mid' : 'shallow';
+    const load = X.num(v.load);
+    v.join_try = g2 !== 'arno' && g1 !== 'arno' && st2 >= 3 && X.num(v['aff_' + g2]) >= 25 && load >= 50 && load < 90 && Math.random() * 100 < 15 + 5 * (st2 - 3);
+    v.join_deep = !!(v.join_try && st1 >= 6 && st2 >= 6);
+    this.push('WATCH_' + v.watch_band.toUpperCase());
+  }
+  sentinelPresence() {
+    const v = this.S.v; const g1 = v.g1; const load = X.num(v.load);
+    const met = SENTINELS.filter(x => this.met(x) || (x === 'kael'));
+    const byAff = (L) => L.sort((p, q) => X.num(v['aff_' + q]) - X.num(v['aff_' + p]))[0] || '';
+    let who = '', mode = '';
+    who = byAff(met.filter(x => X.num(v['cstage_' + x]) >= 5 && (v['consent_' + pairKey(g1, x)] || X.num(v['pair_bond_' + pairKey(g1, x)]) >= 18)));
+    if (who) mode = 'stay';
+    if (!who && v.mission_partner && v.mission_partner_day === v.day && X.num(v['sload_' + v.mission_partner]) >= 60) { who = v.mission_partner; mode = 'order'; }
+    if (!who) { who = byAff(met.filter(x => X.num(v['aff_' + x]) >= 25 && (load >= 70 || v.fought_day === v.day || v['quarrel_day_' + x] === v.day))); if (who) mode = 'door'; }
+    v.sent_in = who; v.sent_mode = mode; v.anchor = who;
+    if (who) { this.seenLead(who); this.push('SENT_PRESENCE'); }
+  }
+  contactProgress(x, n) {
+    const v = this.S.v; if (!SENTINELS.includes(x)) return;
+    if (!X.num(v['cstage_' + x])) v['cstage_' + x] = 1;
+    v['cprog_' + x] = X.num(v['cprog_' + x]) + (n || 1);
+    const next = X.num(v['cstage_' + x]) + 1;
+    if (X.num(v['cprog_' + x]) >= 2 && this.stageCan(x, next, 's')) {
+      v['cstage_' + x] = next; v['cprog_' + x] = 0; v.cs_who = x; v.cs_n = next;
+      const id = 'CS_' + x.toUpperCase() + '_' + next;
+      this.push(this.D.scenes[id] ? id : 'CONTACT_STAGE');
+    }
+  }
+  seenLead(x) {
+    const v = this.S.v; if (!LEADS.includes(x)) return;
+    v['last_seen_' + x] = v.day; v['neglect_tier_' + x] = 0;
+  }
+  inPurify() { return this.S.stack.some(f => this.purify.has(f.s)); }
+  setLoad(n, ctxOK) {
+    const v = this.S.v; const prev = X.num(v.load);
+    n = Math.max(0, Math.min(LOAD_MAX, Math.round(X.num(n))));
+    v.load = n;
+    if (n > prev) this.loadCross(prev, n, ctxOK);
+    this.ui.gauge && this.ui.gauge(this.S);
+  }
+  loadCross(prev, n, force) {
+    const v = this.S.v; if (X.num(v.day) < 1) return;
+    const inMain = !force && this.S.stack.length && (this.S.stack[0].s in this.mainIndex);
+    let T = 0; for (const t of [70, 90, 100]) if (prev < t && n >= t) T = t;
+    if (!T) return;
+    if (T === 100 && !inMain && v.act2_guiding_unlocked) v.overdraw_count = X.num(v.overdraw_count) + 1;
+    if (inMain) return; // 主線自己寫了失控
+    if (v['load_ev_' + T] === v.day) return;
+    v['load_ev_' + T] = v.day;
+    v.load_pending = Math.max(X.num(v.load_pending), T);
+    if (!this.S.queue.some(q => q.id === 'LOAD_CHECK')) this.S.queue.unshift({ t: 'scene', id: 'LOAD_CHECK', force: true });
+  }
+  onNewDay(d) {
+    const v = this.S.v;
+    if (d <= X.num(v.last_drift_day)) return;
+    v.last_drift_day = d;
+    if (d >= 1) v.kael_met = true;
+    if (Math.floor(d / 7) !== X.num(v.orion_wk_id)) { v.orion_wk_id = Math.floor(d / 7); v.orion_week = 0; } // 奧瑞恩：每週最多兩次
+    for (const x of LEADS) if (this.met(x) || (x === 'kael' && d >= 1)) { if (SENTINELS.includes(x) && !X.num(v['cstage_' + x])) v['cstage_' + x] = 1; if (v['last_seen_' + x] === undefined) v['last_seen_' + x] = d; }
+    if (d >= 2) {
+      let up = v.act2_guiding_unlocked ? (isDayOff(d) ? 2 : 4) + Math.floor(X.num(v.act) / 2) : (isDayOff(d) ? 1 : 3); // 第一幕還沒有固定嚮導：後勤嚮導每週例行梳理，上升較慢
+      up -= Math.min(3, Math.floor(X.num(v.steady) / 10));
+      if (LEADS.some(x => X.num(v['gstage_' + x]) >= 6 || X.num(v['cstage_' + x]) >= 6)) up -= 1;
+      if (v.pill_day === d) up -= 3;
+      if (up > 0) this.setLoad(X.num(v.load) + up, true);
+      // 第一幕：休息日後勤嚮導例行梳理（不留羈絆，只把負荷壓回 40 左右）
+      if (!v.act2_guiding_unlocked && isDayOff(d) && X.num(v.load) > 40) this.setLoad(Math.max(40, X.num(v.load) - 15), true);
+    }
+    v.steady = Math.max(0, X.num(v.steady) - 1);
+    // 冷落
+    v.neglect_who = ''; v.neglect_tier = 0;
+    let best = '', bt = 0, ba = -1;
+    for (const x of LEADS) {
+      if (!this.met(x) || X.num(v['aff_' + x]) < 15) continue;
+      if (x === 'kael' && v.kael_romance_lock) continue;
+      if (v['seek_' + x]) {
+        if (d - X.num(v['seek_day_' + x]) > 3) { v['seek_' + x] = false; v['aff_' + x] = Math.max(0, X.num(v['aff_' + x]) - 2); v['jealousy_' + x] = X.num(v['jealousy_' + x]) + 2; v['seek_missed_' + x] = X.num(v['seek_missed_' + x]) + 1; }
+        continue;
+      }
+      const gap = d - X.num(v['last_seen_' + x]); const t = X.num(v['neglect_tier_' + x]);
+      let tier = 0; if (gap > 18 && t === 1) tier = 2; else if (gap > 10 && t === 0) tier = 1;
+      if (tier && X.num(v['aff_' + x]) > ba) { best = x; bt = tier; ba = X.num(v['aff_' + x]); }
+    }
+    if (best) { v.neglect_who = best; v.neglect_tier = bt; v['neglect_tier_' + best] = bt; }
+  }
+  dayCode(d, rest) {
+    const v = this.S.v; const off = isDayOff(d);
+    const guides = ['rowan', 'cecil', 'elio', 'orion'].some(x => v[x + '_met']) && !!v.act2_guiding_unlocked;
+    const patrol = !off && this.getVar('week') >= 2 && [2, 4].includes(d % 7) && SENTINELS.some(x => this.met(x));
+    const code = [];
+    if (v.neglect_who) { const id = 'NEGLECT_' + v.neglect_who.toUpperCase() + '_' + v.neglect_tier; code.push(['call', this.D.scenes[id] ? id : 'NEGLECT_GENERIC']); }
+    code.push(['call', 'LOAD_CHECK']);
+    if (patrol && !rest) code.push(['call', 'PATROL']); else code.push(['cmd', 'freetime', off ? 'day_off' : 'noon', 0]);
+    code.push(['call', 'LOAD_CHECK']);
+    if (guides && !off) code.push(['call', 'GUIDE_DAILY']);
+    code.push(['cmd', 'freetime', isDayOff(d + 1) ? 'day_off_eve' : 'night', 0]);
+    code.push(['call', 'LOAD_CHECK']);
+    code.push(['call', 'LAMP_RITUAL']);
+    return code;
   }
   // ---------- event selection ----------
   slotOK(e, o) {
@@ -265,8 +431,10 @@ class Engine {
   applyDate(dt) {
     const v = this.S.v;
     if (dt.day !== undefined) {
+      const nd = dt.day !== v.day && dt.day > X.num(v.day);
       if (dt.day !== v.day) { if (weatherOf(dt.day) === 'rain') v.rain_day_count = X.num(v.rain_day_count) + 1; }
       v.day = dt.day;
+      if (nd) this.onNewDay(dt.day);
     }
     if (dt.time) v.time = dt.time;
     v.window = dt.day_off ? 'day_off' : '';
@@ -313,11 +481,7 @@ class Engine {
     v.day = d; if (weatherOf(d) === 'rain') v.rain_day_count = X.num(v.rain_day_count) + 1;
     const off = isDayOff(d);
     v.window = '';
-    const noon = this.candidates(NOON_T, off ? 'day_off' : null);
-    const night = this.candidates(NIGHT_T, isDayOff(d + 1) ? 'day_off_eve' : null);
-    const weekStart = (d - 1) % 7 === 0;
-    const guides = LEADS.some(x => ['rowan', 'cecil', 'elio', 'orion'].includes(x) && v[x + '_met']);
-    if (!noon.length && !night.length && !(weekStart && guides)) return false;
+    this.onNewDay(d);
     const act = X.num(v.act) || 1;
     const actZh = ['序章', '第一幕', '第二幕', '第三幕', '第四幕', '第五幕'][act] || '';
     const label = `${actZh}・W${Math.ceil(d / 7)}・Day ${d}${off ? '・休假日' : ''}`;
@@ -325,10 +489,8 @@ class Engine {
       ['cmd', 'date', label, 0],
       ['cmd', 'bg', off ? 'bg_sea_wall_day fx=gray' : 'bg_briefing_room fx=gray', 0],
       ['cmd', '__daylabel', '', 0],
-      ['cmd', 'freetime', off ? 'day_off' : 'noon', 0],
-      ...(guides ? [['call', 'GUIDE_DAILY']] : []),
-      ['cmd', 'freetime', isDayOff(d + 1) ? 'day_off_eve' : 'night', 0],
-      ['call', 'LAMP_RITUAL'],
+      ...(off ? [] : [['call', 'BRIEFING_RANDOM']]),
+      ...this.dayCode(d, false),
       ['end']
     ]);
     this.push(sid);
@@ -397,6 +559,7 @@ class Engine {
       if (!o1.length || solo.length < 2) { /* nothing */ }
       return this.push(this.synth(code));
     }
+    if (['noon', 'night', 'day_off', 'day_off_eve'].includes(arg)) return this.placeFree(cands, times, arg);
     list.sort((a, b) => order(a) - order(b));
     list = list.slice(0, 7);
     if (!list.length) { if (special) this.S.fallback = true; return; }
@@ -413,6 +576,44 @@ class Engine {
     const endPc = code.length; code.push(['end']);
     for (const ins of code) if (ins && ins[0] === 'goto') ins[1] = endPc;
     code[0] = ['choice', null, opts, endPc, 0, special ? '今晚，我想去見誰？' : (times === NIGHT_T ? '夜裡，要去哪裡？' : '空下來的時間，要去哪裡？')];
+    this.push(this.synth(code));
+  }
+  placeOf(e) {
+    const s = e.s; let loc = (s.slotd && s.slotd.loc) || (/__loc\(\s*"?(\w+)/.exec(s.whenx || '') || [])[1] || LEAD_HOME[s.lead] || 'roam';
+    return PLACE_KEY[loc] || loc;
+  }
+  placeFree(cands, times, arg) {
+    const v = this.S.v; const night = times === NIGHT_T;
+    const lastSeen = (x) => x ? X.num(v['last_seen_' + x]) : 1e9;
+    const byLoc = new Map();
+    const sorted = cands.slice().sort((a, b) => (b.s.prio - a.s.prio) || (lastSeen(a.s.lead) - lastSeen(b.s.lead)) || (Math.random() - 0.5));
+    for (const e of sorted) { const L = this.placeOf(e); if (!byLoc.has(L)) byLoc.set(L, e); }
+    const code = [null]; const opts = [];
+    const add = (text, body, meta) => { const pc = code.length; code.push(...body); code.push(['goto', -1]); opts.push({ text, pc, meta: meta || null }); };
+    // 劇情給了理由，才會出現「去找他」
+    for (const x of LEADS) {
+      if (!v['seek_' + x] || !this.met(x)) continue;
+      const ev = cands.find(e => e.s.lead === x);
+      if (ev) for (const [L, e] of byLoc) if (e === ev) byLoc.delete(L);
+      add(`去找${NAMES[x]}`, [['set', 'seek_who', '=', '"' + x + '"'], ['call', 'SEEK_VISIT'], ...(ev ? [['call', ev.id]] : [])], { lead: x, ev: ev ? ev.id : null });
+    }
+    let places = [...byLoc.keys()].slice(0, 5);
+    const pool = PLACE_POOL.filter(L => !places.includes(L) && (L !== 'chapel' || v.seen_S04) && (L !== 'old_port_bar' || v.seen_N01) && this.D.scenes['PLACE_' + L.toUpperCase()]);
+    const want = Math.max(2, 5 - places.length);
+    for (let i = 0; i < want && pool.length; i++) places.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    places.sort((p, q) => (PLACE_POOL.indexOf(p) < 0 ? 99 : PLACE_POOL.indexOf(p)) - (PLACE_POOL.indexOf(q) < 0 ? 99 : PLACE_POOL.indexOf(q)));
+    for (const L of places) {
+      const e = byLoc.get(L); const body = [['set', 'cur_loc', '=', '"' + L + '"']];
+      if (L === 'sea_wall') body.push(['set', 'yasi_goes_seawall', '=', 'true']);
+      const pid = 'PLACE_' + L.toUpperCase();
+      body.push(['call', e ? e.id : (this.D.scenes[pid] ? pid : 'PLACE_GENERIC')]);
+      add(PLACE_VERB[L] || ('去' + (LOC_NAME[L] || L)), body, { lead: e ? e.s.lead || null : null, ev: e ? e.id : null, place: L });
+    }
+    const apc = code.length; code.push(['call', night ? 'PLACE_REST_NIGHT' : 'PLACE_REST']); code.push(['goto', -1]);
+    opts.push({ text: night ? '回房間，早點休息' : '回宿舍，一個人待著', pc: apc, meta: { rest: true } });
+    const endPc = code.length; code.push(['end']);
+    for (const ins of code) if (ins && ins[0] === 'goto') ins[1] = endPc;
+    code[0] = ['choice', null, opts, endPc, 0, night ? '夜裡，要去哪裡？' : (arg === 'day_off' ? '休假日。要去哪裡？' : '空下來的時間，要去哪裡？')];
     this.push(this.synth(code));
   }
   guideFree(tag) {
@@ -470,7 +671,7 @@ class Engine {
           const opts = this.buildOptions(ins[2]);
           if (!opts.length) { f.pc = ins[3]; break; }
           this.lastSnap = this.snapshot();
-          const idx = await this.ui.choice(opts.map(o => ({ text: o.text })), ins[1], ins[5] || '');
+          const idx = await this.ui.choice(opts.map(o => ({ text: o.text, meta: o.meta || null })), ins[1], ins[5] || '');
           const o = opts[Math.max(0, Math.min(opts.length - 1, idx))];
           for (const k in o.bind) this.setVar(k, o.bind[k]);
           S.log.push({ n: '▸', t: o.text, k: 'choice' });
@@ -515,7 +716,7 @@ class Engine {
         try {
           if (o.cond && !this.cond(o.cond)) continue;
           const text = this.interpText(o.text);
-          out.push({ text, pc: o.pc, bind: c });
+          out.push({ text, pc: o.pc, bind: c, meta: o.meta || null });
         } finally { this.ctx.scopes.pop(); }
       }
     }
@@ -528,6 +729,7 @@ class Engine {
     val = this.ev(rhs);
     if (val === undefined && bare) val = (op === '=') ? (/^(aff|bond|stage|seen|pair|load|jealousy)_/.test(rhs) ? 0 : rhs) : rhs;
     const cur = this.getVar(name);
+    const prevLoad = X.num(this.S.v.load);
     if (op === '=') this.setVar(name, val === undefined ? false : val);
     else if (op === '+=') {
       if (Array.isArray(cur)) { this.setVar(name, cur.concat(Array.isArray(val) ? val : [val])); }
@@ -539,7 +741,13 @@ class Engine {
       else this.setVar(name, X.num(cur) - X.num(val));
     } else if (op === '*=') this.setVar(name, X.num(cur) * X.num(val));
     if (/^(aff|bond)_/.test(name)) { const n = X.num(this.getVar(name)); if (n > 100) this.setVar(name, 100); }
-    if (name === 'load') { const n = X.num(this.S.v.load); this.S.v.load = Math.max(0, Math.min(100, n)); this.ui.gauge && this.ui.gauge(this.S); }
+    if (name === 'load') {
+      let n = X.num(this.S.v.load); this.S.v.load = prevLoad;
+      if (op === '-=' && n < prevLoad && !this.inPurify()) { // 只有嚮導疏導能降 load；其他（戀愛、安撫、獨處）→ 穩定度
+        this.S.v.steady = Math.min(30, X.num(this.S.v.steady) + Math.ceil((prevLoad - n) / 2)); n = prevLoad;
+      }
+      this.setLoad(n);
+    }
     if (name === 'loc' && this.S.pres.combat) this.ui.gauge && this.ui.gauge(this.S);
   }
   jump(t) {
@@ -632,6 +840,7 @@ class Engine {
         const id = p[0]; const outfit = p[1] && !p[1].includes('=') ? p[1] : 'uniform'; const ex = p[2] && !p[2].includes('=') ? p[2] : 'default';
         const pos = (/pos=(\w+)/.exec(a) || [])[1] || (P.sprites[id] && P.sprites[id].pos) || 'center';
         P.sprites[id] = { outfit, expr: ex, pos, t: Date.now() };
+        if (LEADS.includes(id) && S.stack.length && !(S.stack[0].s in this.mainIndex)) this.seenLead(id);
         break;
       }
       case 'show_group': {
@@ -678,12 +887,30 @@ class Engine {
         break;
       }
       case 'clickable': break;
+      case 'guide_stage': this.guideStage(a.trim() === 'quiet' || !!v.pair_event_played); break;
+      case 'guide_watch': this.guideWatch(); break;
+      case 'sentinel_presence': this.sentinelPresence(); break;
+      case 'patrol_second': { const x = this.interpId(a.trim()); if (x) { this.seenLead(x); this.contactProgress(x, 1); } break; }
+      case 'patrol_with': {
+        const x = this.interpId(a.trim()); if (!x) break;
+        v.mission_partner = x; v.mission_partner_day = v.day; v.fought_day = v.day;
+        v['sload_' + x] = Math.min(100, X.num(v['sload_' + x]) + 20);
+        v['aff_' + x] = Math.min(100, X.num(v['aff_' + x]) + 1);
+        if (x === 'kael' && v.kael_romance_lock && v.aff_kael > 19) v.aff_kael = 19;
+        this.seenLead(x);
+        this.setLoad(X.num(v.load) + 6, true);
+        this.contactProgress(x, 1);
+        break;
+      }
+      case 'dayrest': { const sid = this.synth([...this.dayCode(v.day, true), ['end']]); this.push(sid); break; }
+      case 'load_mark': v.load_pending = 0; break;
+      case 'emergency_load': { this.setLoad(X.num(this.ev(a.trim())), true); break; }
       default:
         if (this.ui.fx) await this.ui.fx(c, this.interpText(a), S);
     }
     if (this.ui.present) this.ui.present(S, c);
   }
 }
-const api = { Engine, NAMES, LEADS, HIDDEN, HEART, COLOR_HEX, COLOR_NAME, LOC_NAME, weatherOf };
+const api = { Engine, NAMES, LEADS, HIDDEN, GUIDES, SENTINELS, STAGE_T, HEART, COLOR_HEX, COLOR_NAME, LOC_NAME, weatherOf };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.VEngine = api;
 })(typeof self !== 'undefined' ? self : this);

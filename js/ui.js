@@ -221,7 +221,15 @@ function applyTint(S) {
 function renderGauge(S) {
   const v = S.v; const P = S.pres;
   const gl = $('#g-load'), gc = $('#g-loc');
-  const load = +v.load || 0; gl.classList.toggle('on', !!P.combat || load >= 60); gl.querySelector('i').style.setProperty('--v', Math.min(100, load) + '%');
+  const load = +v.load || 0; gl.classList.toggle('on', !!P.combat || (+v.day || 0) >= 1 || load > 0);
+  gl.querySelector('i').style.setProperty('--v', Math.min(100, load / 1.2) + '%');
+  const band = load >= 100 ? 'b4' : load >= 90 ? 'b3' : load >= 70 ? 'b2' : load >= 50 ? 'b1' : 'b0';
+  gl.className = 'gauge' + (gl.classList.contains('on') ? ' on' : '') + ' ' + band;
+  let num = gl.querySelector('b'); if (!num) { num = document.createElement('b'); gl.appendChild(num); }
+  const prev = R.load; R.load = load; let mk = '';
+  if (prev != null && load !== prev) { mk = load > prev ? '▲' : '▼'; R.loadMk = mk; clearTimeout(R.loadT); R.loadT = setTimeout(() => { R.loadMk = ''; const n = $('#g-load b'); if (n) n.textContent = Math.round(+S.v.load || 0); }, 2600); }
+  num.textContent = Math.round(load) + (R.loadMk || mk ? ' ' + (R.loadMk || mk) : '');
+  num.className = (R.loadMk || mk) === '▲' ? 'up' : (R.loadMk || mk) === '▼' ? 'down' : '';
   gc.classList.toggle('on', !!P.combat); gc.querySelector('i').style.setProperty('--v', Math.min(100, +v.loc || 0) + '%');
   $('#status').classList.toggle('empty', !(S.v.colors_seen || []).length && !gl.classList.contains('on') && !gc.classList.contains('on'));
 }
