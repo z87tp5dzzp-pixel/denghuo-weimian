@@ -23,7 +23,7 @@ const LOC_NAME = { medbay: '醫療室', outside_wall: '牆外', old_port_bar: '�
   mess: '食堂', canteen: '食堂', wall_top: '城牆', kitchen: '廚房', training: '訓練場', guide_room_corridor: '疏導室走廊', dorm: '宿舍', archive: '檔案室',
   hq_corridor: '總部走廊', hq_locker: '更衣室', research: '研究所', research_dorm: '研究所宿舍', research_roof: '研究所屋頂', facility_ruin: '設施廢墟',
   detention: '拘留室', north_city: '北城', shallows: '淺灘', cemetery: '墓地', lab: '實驗室', old_port_pier: '舊港碼頭', old_port_alley: '舊港巷弄',
-  rift_edge: '裂隙邊緣', bar: '酒館', chapel_yard: '禮拜堂中庭', lighthouse: '燈塔', east_seawall: '東海堤' };
+  rift_edge: '裂隙邊緣', bar: '酒館', chapel_yard: '禮拜堂中庭', lighthouse: '燈塔', east_seawall: '東海堤', briefing: '簡報室', cecil_office: '上校辦公室', city: '城區', city_north: '北城', dorm_yasi: '我的宿舍', east_district: '東區', greenhouse: '溫室', guide_room: '疏導室', harbor: '港口', hq_office: '總部辦公室', hq_roof: '總部屋頂', hq_yard: '中庭', manor: '宅邸', market: '市場', mess_hall: '食堂', old_port: '舊港', orphanage: '孤兒院', purify_room: '淨化室', rowan_room: '洛恩的房間', seawall: '海堤', slum_market: '貧民區市場', training_ground: '訓練場' };
 const NOON_T = ['predawn', 'dawn', 'morning', 'noon', 'dusk'];
 const NIGHT_T = ['evening', 'night', 'late_night'];
 const ZHD = '零一二三四五六七八九';
@@ -144,6 +144,10 @@ class Engine {
       case 'zh': return zhNum(a[0]);
       case 'load_after': { // 這場疏導結束後的負荷（與 guideEffects 同一套算法），給事件文字用
         const cur = X.num(v.load); const floor = 5 * Math.max(1, X.num(v.act));
+        if (v.guide_ev && v.ev_load0 !== undefined && v.ev_load0 !== '') { // 路線疏導事件：事件自己的降幅與標準降幅取大
+          const done = Math.max(0, X.num(v.ev_load0) - cur); const extra = Math.max(0, this.guideRed() - done);
+          return Math.max(Math.min(cur, floor), cur - extra);
+        }
         return Math.max(Math.min(cur, floor), cur - Math.max(0, this.guideRed()));
       }
       case 'min_pair_bond': { const L = a[0] || []; let m = Infinity; for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) m = Math.min(m, X.num(v['pair_bond_' + pairKey(L[i], L[j])])); return m === Infinity ? 0 : m; }
@@ -251,6 +255,9 @@ class Engine {
     v['pair_bond_' + k] = X.num(v['pair_bond_' + k]) + 1;
     v['pair_sync_' + k] = X.num(v['pair_sync_' + k]) + 3;
     let red = this.guideRed();
+    // 2026-10-30：取代 GX 的路線疏導事件自己會 @set load -=。那就是這一場的降幅，不再額外疊一次標準降幅（總降幅＝兩者取大）。
+    if (v.guide_ev && v.ev_load0 !== undefined && v.ev_load0 !== '') { const done = X.num(v.ev_load0) - X.num(v.load); if (done > 0) red = Math.max(0, red - done); }
+    v.ev_load0 = '';
     // 第一幕的嚮導藥：身體以為嚮導隨時都在，真正的疏導反而進不深。疏導 6 次後清掉（PILL_CLEAR）。
     if (v.pill_dependence) { v.pill_dep_n = X.num(v.pill_dep_n) + 1; if (v.pill_dep_n >= 6) { v.pill_dependence = false; v.pill_dep_cleared = true; const qi = this.S.queue.findIndex(q => q.t !== 'scene'); this.S.queue.splice(qi < 0 ? this.S.queue.length : qi, 0, { t: 'scene', id: 'PILL_CLEAR' }); } }
     // 殘響底線：日常疏導降不到底線以下（底線隨幕數上升；緊急疏導／加入場不受限）
@@ -299,7 +306,7 @@ class Engine {
       v.guide_pair = v.g1 + '_' + v.g2;
       const ev = this.pickEvent(e => e.s.whenx && GUIDE_REFS.test(e.s.whenx) && !GUIDE_AFTER.has(e.id) && !/window ==|guide_tag ==|guide_mode ==/.test(e.s.whenx), {});
       if (ev) {
-        v.guide_ev = ev.id; v.pair_event_played = true;
+        v.guide_ev = ev.id; v.pair_event_played = true; v.ev_load0 = X.num(v.load);
         if (/sent_in/.test(ev.s.whenx)) v.sent_shown = true;
         // 路線事件本身寫了守夜哨兵（AX04：艾許守夜…）→ 今天在場的哨兵就是他，不再另外播 SENT_PRESENCE
         const sl = this.D.scenes[ev.id] && this.D.scenes[ev.id].lead;
