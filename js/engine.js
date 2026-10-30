@@ -113,7 +113,8 @@ class Engine {
     if (nn.startsWith('seen_ending_')) return !!(this.P.endings && this.P.endings[nn.slice(12)]) || v[nn];
     return v[nn];
   }
-  setVar(n, val) { this.S.v[normVar(n)] = val; }
+  setVar(n, val) { n = normVar(n); if (typeof val === 'number' && n.startsWith('pair_bond_') && val > 100) val = 100; this.S.v[n] = val; }
+  capPB() { const v = this.S.v; for (const k in v) if (k.startsWith('pair_bond_') && typeof v[k] === 'number' && v[k] > 100) v[k] = 100; } // v2 批2：pair_bond 上限 100
   met(x) {
     const v = this.S.v;
     if (!v[x + '_met']) return false;
@@ -198,6 +199,7 @@ class Engine {
   afterScene(sid, top) {
     const v = this.S.v;
     if (sid === 'GUIDE_DAILY' && v.g1 && v.g2) this.guideEffects();
+    this.capPB();
     const sc = this.D.scenes[sid];
     if (sc && sc.lead && !(sid in this.mainIndex) && LEADS.includes(sc.lead)) {
       this.seenLead(sc.lead);
@@ -227,6 +229,7 @@ class Engine {
     v['aff_' + g1] = Math.min(100, X.num(v['aff_' + g1]) + a1);
     v['bond_' + g1] = Math.min(100, X.num(v['bond_' + g1]) + b1);
     if (st2 >= 3) v['aff_' + g2] = Math.min(100, X.num(v['aff_' + g2]) + 1); else v['jealousy_' + g2] = X.num(v['jealousy_' + g2]) + 1;
+    if (g2 === 'arno' && v.arno_truth) v.bond_arno = Math.min(100, X.num(v.bond_arno) + 1); // 家人疏導：在場也算陪伴
     v['pair_bond_' + k] = X.num(v['pair_bond_' + k]) + 1;
     v['pair_sync_' + k] = X.num(v['pair_sync_' + k]) + 3;
     let red = 12 + 2 * st1 + Math.floor(st2 / 2);
