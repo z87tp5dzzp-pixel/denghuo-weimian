@@ -717,15 +717,96 @@ class Engine {
   morningAfter(d) {
     const v = this.S.v; const who = v.ma_who;
     if (!who || X.num(v.ma_day) !== d - 1) { if (who && X.num(v.ma_day) < d - 1) v.ma_who = ''; return false; }
-    const by = LEADS.filter(x => x !== who && this.met(x) && !(x === 'kael' && v.kael_romance_lock))
+    const tn3 = X.num(v.tn3_day) === d - 1 ? v.tn3_b : '';
+    if (tn3) { const gs = GUIDES.filter(g => g !== who && g !== tn3 && g !== 'arno' && this.met(g)); v.tn_pg1 = gs[0] || 'elio'; v.tn_pg2 = gs[1] || (gs[0] === 'rowan' ? 'cecil' : 'rowan'); }
+    const by = LEADS.filter(x => x !== who && x !== tn3 && this.met(x) && !(x === 'kael' && v.kael_romance_lock))
       .sort((p, q) => X.num(v['aff_' + q]) - X.num(v['aff_' + p]))[0] || '';
     // 第 2 期：發現的方式跟著發現者的能力走——艾許用鼻子、利奧用耳朵、嚮導讀負荷曲線；其他人只看得到印子、外套、哼歌
     const isS = SENTINELS.includes(who); const k = X.num(v.ma_count);
     let cause = [0, 3, 5][k % 3];
     if (by === 'ash') cause = 1; else if (by === 'leo') cause = 4; else if (GUIDES.includes(by)) cause = isS ? 6 : 2;
+    if (tn3 && (v.tn_pg1 === by || v.tn_pg2 === by)) { const gs = GUIDES.filter(g => g !== who && g !== tn3 && g !== by && g !== 'arno' && this.met(g)); v.tn_pg1 = gs[0] || (by === 'elio' ? 'rowan' : 'elio'); v.tn_pg2 = gs[1] || ([ 'rowan', 'cecil', 'elio' ].find(g => g !== v.tn_pg1 && g !== by)); }
     v.ma_x = who; v.ma_by = by; v.ma_cause = cause; v.ma_known = [1, 3, 4, 5].includes(cause); v.ma_kind = isS ? 's' : 'g';
     v.ma_count = k + 1; v.ma_who = '';
     return true;
+  }
+  // 任務劇情第三批：三個人的夜（TN）。亞思＋兩位男主，每組三人自己一條路：
+  //   ask  「那我呢」：A 的夜隔天，發現的人 B（高好感、告白過）來問 → B 的夜（她可說「還不要」）
+  //   know A 知道了 B（發現跟著發現者；不是他發現的，就是她自己說）→ 有 consent_<pk> 才說「那我們三個呢」，沒有就等他們先和好
+  //   invite 兩個人都已經跟她過夜、彼此也同意了 → 其中一個直接提
+  //   three 三個人都說好（畫面上），然後才發生；哨兵在場而負荷 ≥70 → 拒絕
+  tnOK(x) {
+    const v = this.S.v; if (!LEADS.includes(x) || !this.met(x)) return false;
+    if (X.num(v['aff_' + x]) < 60) return false;
+    if (x === 'kael' && v.kael_romance_lock) return false;
+    if (x === 'arno') return !!(v.arno_truth && v.arno_romance_open && v.arno_love);
+    const conf = v['confessed_' + x] || (CONF_SEEN[x] && v['seen_' + CONF_SEEN[x]]); if (!conf) return false;
+    const st = SENTINELS.includes(x) ? X.num(v['cstage_' + x]) : X.num(v['gstage_' + x]);
+    return st >= 7;
+  }
+  tnPick() {
+    const v = this.S.v; const d = X.num(v.day); v.tn_mode = ''; v.tn_how = '';
+    if (X.num(v.tn_day) === d || X.num(v.ma_day) === d || X.num(v.tn3_day) === d) return;
+    const pk = (a, b) => [a, b].sort().join('_');
+    const set = (mode, a, b, how) => {
+      const k = pk(a, b); Object.assign(v, { tn_mode: mode, tn_a: a, tn_b: b, tn_k: k, tn_how: how || '',
+        tn_ss: SENTINELS.includes(a) && SENTINELS.includes(b), tn_has_s: SENTINELS.includes(a) || SENTINELS.includes(b),
+        tn_s1: SENTINELS.includes(a) ? a : (SENTINELS.includes(b) ? b : ''), tn_vex: a === 'vex' || b === 'vex', tn_noa: a === 'noa' || b === 'noa' });
+      return true;
+    };
+    // 今天早上的發現
+    if (X.num(v.ma_day) === d - 1 && v.ma_x && LEADS.includes(v.ma_by || '')) {
+      const A = v.ma_x, B = v.ma_by, k = pk(A, B), ph = X.num(v['tn_' + k]);
+      if (ph === 2 && v['tn_first_' + k] === B && v['slept_' + B]) return set('know', B, A, v['tn_told_' + k] ? 'told' : (v.ma_known ? 'saw' : 'guess'));
+      if (ph === 0 && v['slept_' + A] && !v['slept_' + B] && this.tnOK(B) && this.tnOK(A)) return set('ask', A, B, v.ma_known ? 'saw' : 'guess');
+    }
+    const L = LEADS.filter(x => this.met(x));
+    for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
+      const k = pk(L[i], L[j]), ph = X.num(v['tn_' + k]); const A = v['tn_first_' + k], B = A === L[i] ? L[j] : L[i];
+      if (ph === 1 && d >= X.num(v['tn_wait_' + k]) && this.tnOK(B) && !v['slept_' + B]) return set('again', A, B);
+      if (ph === 2 && d >= X.num(v['tn_d_' + k]) + 3) return set('know', A, B, 'told');
+      if (ph === 21 && v['consent_' + k] && d >= X.num(v['tn_d_' + k]) + 2) return set('know', A, B, 'ally');
+      if (ph === 3 && d >= X.num(v['tn_d_' + k]) + 2 && this.tnOK(L[i]) && this.tnOK(L[j])) return set('three', A, B);
+    }
+    if (X.num(v.act) < 3) return;
+    for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
+      const a = L[i], b = L[j], k = pk(a, b);
+      if (X.num(v['tn_' + k]) || !v['consent_' + k] || !v['slept_' + a] || !v['slept_' + b] || !this.tnOK(a) || !this.tnOK(b)) continue;
+      if (d < X.num(v['tn_inv_' + k])) continue;
+      const first = X.num(v['aff_' + a]) >= X.num(v['aff_' + b]) ? a : b;
+      return set('invite', first, first === a ? b : a);
+    }
+  }
+  // ---------- 牽手・抱抱・親親（TC）：一晚最多一件，全域兩天一次，每人冷卻 3 天；同種最多 3 個版本、從不重播 ----------
+  tcKinds(x) {
+    const v = this.S.v; const aff = X.num(v['aff_' + x]); const S = SENTINELS.includes(x);
+    const st = S ? X.num(v['cstage_' + x]) : X.num(v['gstage_' + x]);
+    const conf = v['confessed_' + x] || (CONF_SEEN[x] && v['seen_' + CONF_SEEN[x]]);
+    const arnoOK = x === 'arno' ? !!(v.arno_truth && v.arno_romance_open) : true;
+    const ks = [];
+    if (aff >= 40 && (x === 'arno' ? arnoOK : st >= 2)) ks.push('hand');
+    if (aff >= 55 && (x === 'arno' ? arnoOK : st >= (S ? 5 : 4))) ks.push('hug');
+    if (aff >= 65 && (x === 'arno' ? arnoOK && !!v.arno_love : !!conf && st >= 6)) ks.push('kiss');
+    return ks;
+  }
+  tcPick() {
+    const v = this.S.v; const d = X.num(v.day); v.tc_mode = ''; v.tc_x = ''; v.tc_kind = ''; v.tc_v = 0;
+    if (v.tc_day !== undefined && v.tc_day !== '' && d - X.num(v.tc_day) < 2) return;
+    if (X.num(v.ma_day) === d || X.num(v.tn3_day) === d || X.num(v.tn_day) === d) return;
+    const cands = [];
+    for (const x of LEADS) {
+      if (!this.met(x) || X.num(v['last_seen_' + x]) !== d) continue;
+      if (x === 'kael' && v.kael_romance_lock) continue;
+      const last = v['tc_day_' + x]; if (last !== undefined && last !== '' && d - X.num(last) < 3) continue;
+      const ks = this.tcKinds(x).filter(k => X.num(v['tc_' + x + '_' + k]) < 3 && this.D.scenes['TC_' + x.toUpperCase() + '_' + k.toUpperCase() + '_' + (X.num(v['tc_' + x + '_' + k]) + 1)]);
+      if (!ks.length) continue;
+      cands.push({ x, ks, sc: X.num(v['aff_' + x]) - 5 * X.num(v['tc_n_' + x]) });
+    }
+    if (!cands.length) return;
+    cands.sort((a, b) => b.sc - a.sc);
+    const { x, ks } = cands[0]; const order = ['hand', 'hug', 'kiss'];
+    const kind = ks.slice().sort((a, b) => (X.num(v['tc_' + x + '_' + a]) - X.num(v['tc_' + x + '_' + b])) || (order.indexOf(b) - order.indexOf(a)))[0];
+    Object.assign(v, { tc_mode: 'on', tc_x: x, tc_kind: kind, tc_v: X.num(v['tc_' + x + '_' + kind]) + 1 });
   }
   synth(code) { const id = '__s' + (this.S.synthN++); this.S.synth[id] = code; return id; }
   // ---------- freetime ----------
@@ -1125,6 +1206,8 @@ class Engine {
       case 'sentinel_presence': this.sentinelPresence(); break;
       case 'patrol_second': { const x = this.interpId(a.trim()); if (x) { this.seenLead(x); this.contactProgress(x, 1); } break; }
       case 'mx': { const x = this.interpId(a.trim()); if (x) this.mxBeat(x); break; }
+      case 'tn_pick': this.tnPick(); break;
+      case 'tc_pick': this.tcPick(); break;
       case 'mx_night': { // 任務夜：允許這位哨兵進第 8 階（之後由劇本 @set cstage_x = 8）
         const x = this.interpId(a.trim()); this._mxNight = true; v.mx_night_ok = !!x && this.stageCan(x, 8, 's'); this._mxNight = false; break;
       }
