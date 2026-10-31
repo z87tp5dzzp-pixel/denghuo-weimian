@@ -33,6 +33,8 @@ const GUIDE_REFS = /\b(g1|g2|guide_g1|guide_g2|anchor|sent_in|guide_pair|guide_t
 // ---- v2 systems (REWRITE_PLAN §4) ----
 const GUIDES = ['rowan', 'cecil', 'elio', 'orion', 'noa', 'arno'];
 const SENTINELS = ['kael', 'ash', 'leo', 'silas', 'vex'];
+const CONF_SEEN = { kael: 'K21', ash: 'A23', leo: 'L21', silas: 'S24', vex: 'V23' }; // 路線告白場＝也算 confessed
+const MX_TYPES = ['patrol', 'recon', 'escort', 'outside_wall', 'dark_op', 'execution'];
 const STAGE_T = [0, 0, 8, 15, 22, 30, 40, 55, 60]; // aff needed for stage n (stage 7: ≥55 until confession scenes exist)
 const PURIFY_ID = /^(GUIDE_|GS_|GR_|GX_|GXF_|WX_|WATCH_|JOIN_|LOAD_|TEMP_ANCHOR|ANCHOR_|EMERG|SENT_PRESENCE|SHARED_SENSE)/;
 const LOAD_MAX = 120;
@@ -110,7 +112,11 @@ class Engine {
       case 'arno_reunited': return !!v.seen_AR04;
       case 'late_night': return v.time === 'late_night';
       case 'injured_hospitalized': return v.injury_yasi === 2;
-      case 'mission_outside_wall': return v.mission_type === 'outside_wall';
+      case 'mission_outside_wall': return v.mission_type === 'outside_wall' && X.num(v.mission_day) >= X.num(v.day) - 1 && X.num(v.mission_day) > 0;
+      case 'mission_today': return X.num(v.mission_day) === X.num(v.day) && X.num(v.day) > 0;
+      case 'executed_today': case 'seen_today_execution': return v.mission_type === 'execution' && X.num(v.mission_day) === X.num(v.day) && X.num(v.day) > 0;
+      case 'dark_op_partner_includes': return (v.mission_type === 'dark_op' && X.num(v.mission_day) === X.num(v.day)) ? (v.dark_op_with || '') : '';
+      case 'mission_banned': return X.num(v.mission_ban_until) >= X.num(v.day);
     }
     if (n === 'rain_day') return !!v.rain_day || weatherOf(v.day) === 'rain';
     const nn = normVar(n);
@@ -161,6 +167,31 @@ class Engine {
         if (g === 'noa') return ad === 'nickname_strawberry' ? '草莓' : ad === 'given' ? '亞思' : ad === 'surname' ? '卡菲希爾' : '小姐';
         if (g === 'arno') return '小思';
         return '亞思';
+      }
+      case 'sname': { // 第 2 期：這位男主現在怎麼叫她（naming.md）
+        const x = String(a[0]);
+        if (x === 'kael') return v.nickname_kael ? '思' : v.kael_calls_name ? '亞思' : '卡菲希爾';
+        if (x === 'ash') return (v.seen_A21 && !v.seen_A22) ? '卡菲希爾' : '雪';
+        if (x === 'leo') return v.nickname_leo ? '亞亞' : (v.leo_sulk || !v.seen_L11) ? '前輩' : '亞思前輩';
+        if (x === 'silas') return v.nickname_silas ? '小燭' : v.silas_unlocked ? '亞思' : '卡菲希爾小姐';
+        if (x === 'vex') return v.nickname_vex ? '小刀' : '署方的小刀';
+        if (x === 'arno') return '思思';
+        return this.callFn('yname', [x]);
+      }
+      case 'hname': { // 她現在怎麼叫他（naming.md；退回叫姓的狀態也算）
+        const x = String(a[0]);
+        if (x === 'kael') return (v.seen_K07a && !v.seen_K10) ? '格雷森' : '凱爾';
+        if (x === 'ash') return v.call_name_ash ? '艾許' : '貝克特';
+        if (x === 'leo') return v.call_name_leo ? '利奧' : v.seen_L11 ? '艾弗雷特' : '新人';
+        if (x === 'silas') return v.call_name_silas ? '塞拉斯' : '處刑官';
+        if (x === 'vex') return v.call_name_vex ? '維克斯' : '布萊克莫爾';
+        if (x === 'rowan') return v.call_name_rowan ? '洛恩' : '布蘭德';
+        if (x === 'cecil') return v.call_name_cecil ? '塞西爾' : '上校';
+        if (x === 'elio') return v.call_name_elio ? '艾利歐' : '梅多斯醫官';
+        if (x === 'orion') return (v.call_name_orion || v.seen_O13) ? '奧瑞恩' : '諾克斯';
+        if (x === 'noa') return v.call_name_noa ? '諾亞' : '老闆';
+        if (x === 'arno') return '哥';
+        return NAMES[x] || x;
       }
       case 'chance': return Math.random() * 100 < X.num(a[0]);
       case 'name': case 'lover_name': return NAMES[a[0]] !== undefined ? NAMES[a[0]] : String(a[0]);
@@ -295,8 +326,10 @@ class Engine {
     if (next > 1 && aff < STAGE_T[next]) return false;
     if (next >= 5 && load >= 90) return false;
     if (next >= 6 && load >= 70) return false;
-    if (next >= 7 && !(v['confessed_' + x] || aff >= 55)) return false;
-    if (next >= 8 && !(v['confessed_' + x] && aff >= 60 && load < 70)) return false; // 第 3 批：第 8 階＝告白後、aff≥60、負荷<70
+    const conf = v['confessed_' + x] || (CONF_SEEN[x] && v['seen_' + CONF_SEEN[x]]);
+    if (next >= 7 && !(conf || aff >= 55)) return false;
+    if (next >= 8 && !(conf && aff >= 60 && load < 70)) return false;
+    if (next >= 8 && kind === 's' && !this._mxNight) return false; // 第 2 期：哨兵第 8 階只在任務夜（MX）發生，有合理的理由 // 第 3 批：第 8 階＝告白後、aff≥60、負荷<70
     if (kind === 'g' && x === 'arno') return false;
     if (x === 'kael' && v.kael_romance_lock && next >= 5) return false;
     return true;
@@ -363,6 +396,34 @@ class Engine {
       return e.id;
     }
     return null;
+  }
+  // ---------- 第 2 期：任務弧（MX_<S>_k，用 @gx min max req；min/max＝接觸階段 cstage） ----------
+  mxList(x) {
+    if (!this._mx) this._mx = {};
+    if (!this._mx[x]) {
+      const re = new RegExp('^MX_' + x.toUpperCase() + '_(\\d+)$');
+      this._mx[x] = Object.entries(this.D.scenes).filter(([id, s]) => s.gx && re.test(id))
+        .map(([id, s]) => ({ id, k: +id.match(re)[1], gx: s.gx })).sort((a, b) => a.k - b.k);
+    }
+    return this._mx[x];
+  }
+  mxBeat(x) {
+    const v = this.S.v; const X_ = x.toUpperCase(); const n = X.num(v['cstage_' + x]) || 1;
+    v.mx_gap = v['mx_lastday_' + x] === undefined ? 0 : X.num(v.day) - X.num(v['mx_lastday_' + x]);
+    v['mx_lastday_' + x] = v.day;
+    v.mx_k = X.num(v['mx_n_' + x]) % 3; v.mx_odd = X.num(v['mx_n_' + x]) % 2;
+    v.mx_ma = v.ma_x === x && X.num(v.ma_day) >= X.num(v.day) - 2;
+    v.mx_hurt_prev = X.num(v['injury_' + x]) > 0;
+    let id = null;
+    for (const e of this.mxList(x)) {
+      if (v['mxs_' + e.id]) continue;
+      if (n < e.gx.min || n > e.gx.max) continue;
+      if (e.gx.req && !this.cond(e.gx.req)) continue;
+      v['mxs_' + e.id] = true; v['mx_' + x] = X.num(v['mx_' + x]) + 1; id = e.id; break;
+    }
+    if (!id) id = this.D.scenes['MXF_' + X_] ? 'MXF_' + X_ : null;
+    v.mx_cur = id || ''; v['mx_n_' + x] = X.num(v['mx_n_' + x]) + 1;
+    if (id) this.push(id);
   }
   guideWatch() {
     const v = this.S.v; const g1 = v.g1, g2 = v.g2;
@@ -516,8 +577,10 @@ class Engine {
     const code = [];
     if (v.neglect_who) { const id = 'NEGLECT_' + v.neglect_who.toUpperCase() + '_' + v.neglect_tier; code.push(['call', this.D.scenes[id] ? id : 'NEGLECT_GENERIC']); }
     code.push(['call', 'LOAD_CHECK']);
-    if (patrol && !rest) v.patrol_day = d;
-    if (patrol && !rest) code.push(['call', 'PATROL']); else code.push(['cmd', 'freetime', off ? 'day_off' : 'noon', 0]);
+    if (patrol && !rest && !(X.num(v.mission_ban_until) >= d)) v.patrol_day = d;
+    const banned = X.num(v.mission_ban_until) >= d;
+    if (patrol && !rest && !banned) code.push(['call', 'PATROL']);
+    else { if (patrol && !rest && banned && this.D.scenes.PATROL_BENCHED) code.push(['call', 'PATROL_BENCHED']); code.push(['cmd', 'freetime', off ? 'day_off' : 'noon', 0]); }
     code.push(['call', 'LOAD_CHECK']);
     if (guides && !off) code.push(['call', 'GUIDE_DAILY']);
     code.push(['cmd', 'freetime', isDayOff(d + 1) ? 'day_off_eve' : 'night', 0]);
@@ -656,7 +719,12 @@ class Engine {
     if (!who || X.num(v.ma_day) !== d - 1) { if (who && X.num(v.ma_day) < d - 1) v.ma_who = ''; return false; }
     const by = LEADS.filter(x => x !== who && this.met(x) && !(x === 'kael' && v.kael_romance_lock))
       .sort((p, q) => X.num(v['aff_' + q]) - X.num(v['aff_' + p]))[0] || '';
-    v.ma_x = who; v.ma_by = by; v.ma_cause = X.num(v.ma_count) % 6; v.ma_count = X.num(v.ma_count) + 1; v.ma_who = '';
+    // 第 2 期：發現的方式跟著發現者的能力走——艾許用鼻子、利奧用耳朵、嚮導讀負荷曲線；其他人只看得到印子、外套、哼歌
+    const isS = SENTINELS.includes(who); const k = X.num(v.ma_count);
+    let cause = [0, 3, 5][k % 3];
+    if (by === 'ash') cause = 1; else if (by === 'leo') cause = 4; else if (GUIDES.includes(by)) cause = isS ? 6 : 2;
+    v.ma_x = who; v.ma_by = by; v.ma_cause = cause; v.ma_known = [1, 3, 4, 5].includes(cause); v.ma_kind = isS ? 's' : 'g';
+    v.ma_count = k + 1; v.ma_who = '';
     return true;
   }
   synth(code) { const id = '__s' + (this.S.synthN++); this.S.synth[id] = code; return id; }
@@ -1056,8 +1124,24 @@ class Engine {
       case 'guide_watch': this.guideWatch(); break;
       case 'sentinel_presence': this.sentinelPresence(); break;
       case 'patrol_second': { const x = this.interpId(a.trim()); if (x) { this.seenLead(x); this.contactProgress(x, 1); } break; }
+      case 'mx': { const x = this.interpId(a.trim()); if (x) this.mxBeat(x); break; }
+      case 'mx_night': { // 任務夜：允許這位哨兵進第 8 階（之後由劇本 @set cstage_x = 8）
+        const x = this.interpId(a.trim()); this._mxNight = true; v.mx_night_ok = !!x && this.stageCan(x, 8, 's'); this._mxNight = false; break;
+      }
       case 'patrol_with': {
         const x = this.interpId(a.trim()); if (!x) break;
+        v.mission_day = v.day; v.mission_count = X.num(v.mission_count) + 1;
+        // 任務專屬冷落：其他已相遇、在意她的哨兵，連續幾次沒被選
+        v.mx_neglect = '';
+        for (const y of SENTINELS) {
+          if (y === x) { v['mx_skip_' + y] = 0; continue; }
+          if (!this.met(y)) continue;
+          v['mx_skip_' + y] = X.num(v['mx_skip_' + y]) + 1;
+          const t = X.num(v['mxn_tier_' + y]);
+          if (!v.mx_neglect && X.num(v['mx_skip_' + y]) >= (t ? 4 : 3) + t && X.num(v['aff_' + y]) >= 25 && X.num(v['cstage_' + y]) >= 3 && t < 3 && !(y === 'kael' && v.kael_romance_lock && t >= 1)) {
+            v.mx_neglect = y; v.mx_neglect_tier = t + 1; v['mxn_tier_' + y] = t + 1; v['mx_skip_' + y] = 0;
+          }
+        }
         v.mission_partner = x; v.mission_partner_day = v.day; v.fought_day = v.day;
         v['sload_' + x] = Math.min(100, X.num(v['sload_' + x]) + 20);
         v['aff_' + x] = Math.min(100, X.num(v['aff_' + x]) + 1);
